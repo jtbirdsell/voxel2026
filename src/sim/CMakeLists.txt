@@ -22,6 +22,7 @@ option(VOXEL2026_SIM_UNPINNED_CONTROL
 
 add_library(voxel2026_sim STATIC
 	collision_step.cpp
+	player.cpp
 	rebase.cpp
 	replay.cpp
 )

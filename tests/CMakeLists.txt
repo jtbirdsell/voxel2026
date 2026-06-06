@@ -19,6 +19,7 @@ add_executable(voxel2026_tests
 	test_meshexec.cpp
 	test_minigen.cpp
 	test_morton.cpp
+	test_player.cpp
 	test_rc.cpp
 	test_rebase.cpp
 	test_registry.cpp

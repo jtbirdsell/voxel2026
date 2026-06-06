@@ -62,8 +62,10 @@ AxisRange overlapRange(float minCoord, float maxCoord)
 // Does the entity box, at its current position, overlap any solid voxel?
 // Scan order is fixed (z, y, x ascending) — iteration order never affects the
 // result here (pure existence test), but we keep it canonical on principle.
-// World queries translate by the frame origin in INTEGER math only.
-bool boxOverlapsSolid(const Entity &e, const WorldOffset &origin)
+// World queries route through the injected callback (integer-only by its
+// contract) and translate by the frame origin in INTEGER math only.
+bool boxOverlapsSolid(const Entity &e, const WorldOffset &origin, SolidFn solid,
+		const void *ctx)
 {
 	const AxisRange rx = overlapRange(e.pos.x - e.halfExtents.x, e.pos.x + e.halfExtents.x);
 	const AxisRange ry = overlapRange(e.pos.y - e.halfExtents.y, e.pos.y + e.halfExtents.y);
@@ -71,7 +73,7 @@ bool boxOverlapsSolid(const Entity &e, const WorldOffset &origin)
 	for (std::int32_t z = rz.lo; z <= rz.hi; ++z)
 		for (std::int32_t y = ry.lo; y <= ry.hi; ++y)
 			for (std::int32_t x = rx.lo; x <= rx.hi; ++x)
-				if (worldSolid(x + origin.x, y + origin.y, z + origin.z))
+				if (solid(x + origin.x, y + origin.y, z + origin.z, ctx))
 					return true;
 	return false;
 }
@@ -85,7 +87,8 @@ float &axisOf(Vec3 &v, int axis)
 // kMaxSubstep. On the first substep that lands the box inside a solid voxel,
 // clamp the box flush to the voxel face it crossed, zero the axis velocity,
 // and stop. Returns true if the axis was blocked.
-bool sweepAxis(Entity &e, int axis, float delta, const WorldOffset &origin)
+bool sweepAxis(Entity &e, int axis, float delta, const WorldOffset &origin,
+		SolidFn solid, const void *ctx)
 {
 	if (delta == 0.0f)
 		return false;
@@ -104,7 +107,7 @@ bool sweepAxis(Entity &e, int axis, float delta, const WorldOffset &origin)
 	for (std::int32_t i = 0; i < count; ++i) {
 		const float prev = p;
 		p = prev + sub;
-		if (!boxOverlapsSolid(e, origin))
+		if (!boxOverlapsSolid(e, origin, solid, ctx))
 			continue;
 
 		// Blocked: clamp flush to the face of the voxel the leading face
@@ -117,7 +120,7 @@ bool sweepAxis(Entity &e, int axis, float delta, const WorldOffset &origin)
 		// If clamping did not separate the box (e.g. it was already
 		// overlapping before this axis moved — spawn intersections), restore
 		// the pre-substep coordinate instead of inventing a position.
-		if (boxOverlapsSolid(e, origin))
+		if (boxOverlapsSolid(e, origin, solid, ctx))
 			p = prev;
 
 		float &v = axisOf(e.vel, axis);
@@ -140,7 +143,19 @@ bool worldSolid(std::int32_t x, std::int32_t y, std::int32_t z)
 	return false;
 }
 
-void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origin)
+namespace {
+
+// Trampoline keeping the spike-world entry points bit-identical: same
+// worldSolid, reached through the injected-callback plumbing.
+bool spikeWorldSolid(std::int32_t x, std::int32_t y, std::int32_t z, const void *)
+{
+	return worldSolid(x, y, z);
+}
+
+} // namespace
+
+void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origin,
+		SolidFn solid, const void *ctx)
 {
 	// WorldOffset precondition (see collision_step.hpp): keeps every
 	// origin+cell addition far inside int32 — loud failure over silent UB.
@@ -172,9 +187,9 @@ void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origi
 	const bool movingDown = e.vel.y < 0.0f;
 
 	// Fixed axis order: Y first (gravity axis), then X, then Z.
-	const bool blockedY = sweepAxis(e, 1, e.vel.y * params.dt, origin);
-	sweepAxis(e, 0, e.vel.x * params.dt, origin);
-	sweepAxis(e, 2, e.vel.z * params.dt, origin);
+	const bool blockedY = sweepAxis(e, 1, e.vel.y * params.dt, origin, solid, ctx);
+	sweepAxis(e, 0, e.vel.x * params.dt, origin, solid, ctx);
+	sweepAxis(e, 2, e.vel.z * params.dt, origin, solid, ctx);
 
 	e.onGround = blockedY && movingDown;
 
@@ -183,9 +198,14 @@ void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origi
 	e.pos.z = detClamp(e.pos.z, -kWorldBound, kWorldBound);
 }
 
+void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origin)
+{
+	collisionStep(e, params, origin, &spikeWorldSolid, nullptr);
+}
+
 void collisionStep(Entity &e, const StepParams &params)
 {
-	collisionStep(e, params, WorldOffset{});
+	collisionStep(e, params, WorldOffset{}, &spikeWorldSolid, nullptr);
 }
 
 } // namespace sim

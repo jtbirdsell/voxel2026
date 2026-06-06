@@ -1,14 +1,21 @@
-// First world view (issue #21) — the developer-hardware demo that FLIES a
-// free camera through a minigen world rendered by the connected belt:
-// generate -> Contract-1 blob -> SQLite store -> unpack -> greedy mesh on
-// the job system -> world-view renderer -> swapchain. ("Walking" — player
-// collision, gravity, a capsule — is Phase 2's player story; this milestone
-// is the rendered, navigable world, named honestly.)
+// First world view (issue #21) — the developer-hardware demo over the
+// connected belt: generate -> Contract-1 blob -> SQLite store -> unpack ->
+// greedy mesh on the job system -> world-view renderer -> swapchain.
+//
+// Issue #23 made it WALKABLE: G drops into walk mode — a deterministic
+// player box (sim::playerStep over the SolidityWorld adapter, fixed-dt
+// accumulator) with gravity, ground contact, and jumping; F returns to the
+// free-fly camera. The camera-frame trig that turns WASD into a world-space
+// move vector lives HERE, on the presentation side — the deterministic
+// kernel only ever sees the resulting input floats (the replay-determinism
+// claim is pinned by tests/test_player.cpp over scripted inputs, not by
+// this interactive loop).
 //
 // Windows-only dev tool (the offscreen renderer is the CI-validated path;
 // this is the human-facing one). Controls: WASD move, arrow keys look,
-// Q/E down/up, ESC quit. --frames N exits after N frames (automation);
-// --db PATH persists the world between runs (default: in-memory).
+// G walk / F fly, SPACE jump (walk), Q/E down/up (fly), ESC quit.
+// --frames N exits after N frames (automation); --db PATH persists the
+// world between runs (default: in-memory).
 //
 // Issue #22 upgraded the loop to the persistent WorldRenderer: created-once
 // pipeline/depth/geometry (device-local, staged upload), reused command
@@ -43,11 +50,13 @@ int main()
 
 #include "jobs/jobs.hpp"
 #include "mesh/parallel.hpp"
+#include "sim/player.hpp"
 #include "store/sqlite_store.hpp"
 #include "vk/device.hpp"
 #include "vk/worldrenderer.hpp"
 #include "vk/worldview.hpp"
 #include "world/belt.hpp"
+#include "world/solidity.hpp"
 
 namespace {
 
@@ -69,6 +78,13 @@ bool keyDown(int virtualKey)
 {
 	return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 }
+
+// Camera eye above the player box center (presentation only — never enters
+// the simulation). Box center rests at floor + 0.4375, so eyes sit ~1.6
+// above the feet.
+constexpr float kEyeAboveCenter = 1.1625f;
+
+constexpr sim::Vec3 kSpawn{64.0f, 40.0f, 64.0f}; // above the region center
 
 } // namespace
 
@@ -122,6 +138,13 @@ int main(int argc, char **argv)
 									 static_cast<float>(belt[i].y * 16),
 									 static_cast<float>(belt[i].z * 16)},
 					&meshes[i]});
+
+	// Walk mode (issue #23): the same unpacked chunks the renderer sees,
+	// registered with the integer-only solidity adapter. `chunks` outlives
+	// the loop, so the stored pointers stay valid.
+	world::SolidityWorld solidity;
+	for (std::size_t i = 0; i < belt.size(); ++i)
+		solidity.addChunk(belt[i].x, belt[i].y, belt[i].z, &chunks[i]);
 	const auto beltT1 = std::chrono::steady_clock::now();
 	std::printf("belt: %zu chunks (%zu drawn), %llu quads, %.1f ms on %u threads\n",
 			belt.size(), draws.size(), static_cast<unsigned long long>(quads),
@@ -140,7 +163,7 @@ int main(int argc, char **argv)
 	RECT rect{0, 0, static_cast<LONG>(winW), static_cast<LONG>(winH)};
 	AdjustWindowRect(&rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, FALSE);
 	HWND hwnd = CreateWindowExW(0, wc.lpszClassName,
-			L"voxel2026 — first walkable world (WASD move, arrows look, ESC quits)",
+			L"voxel2026 — first walkable world (G walk / F fly, WASD, SPACE jump, ESC)",
 			WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
 			rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr, hinst,
 			nullptr);
@@ -285,15 +308,23 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	// ---- Free-fly loop.
+	// ---- Fly/walk loop.
 	vk::WorldCamera cam;
 	cam.eye = {64, 56, 150};
 	float yaw = -1.5708f; // facing -Z
 	float pitch = -0.35f;
+	bool walkMode = false;
+	bool prevG = false, prevF = false;
+	sim::Entity player;
+	player.halfExtents = sim::kPlayerHalfExtents;
+	const sim::StepParams simParams{};
+	const sim::WalkParams walkParams{};
+	float simAccum = 0.0f;
 	std::uint64_t frames = 0;
 	double frameMsAccum = 0;
 	auto last = std::chrono::steady_clock::now();
 	bool running = true;
+	std::puts("controls: WASD move, arrows look, G walk / F fly, SPACE jump, ESC quits");
 	while (running && frames < maxFrames) {
 		MSG msg;
 		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -323,29 +354,100 @@ int main(int argc, char **argv)
 		const vk::Float3 fwd{std::cos(pitch) * std::cos(yaw), std::sin(pitch),
 				std::cos(pitch) * std::sin(yaw)};
 		const vk::Float3 right{-std::sin(yaw), 0, std::cos(yaw)};
-		const float moveSpeed = 40.0f * dt;
-		if (keyDown('W')) {
-			cam.eye.x += fwd.x * moveSpeed;
-			cam.eye.y += fwd.y * moveSpeed;
-			cam.eye.z += fwd.z * moveSpeed;
+
+		// Mode toggles (edge-triggered). Entering walk mode drops the player
+		// at the camera; entering fly mode keeps the camera where it is.
+		const bool gNow = keyDown('G'), fNow = keyDown('F');
+		if (gNow && !prevG && !walkMode) {
+			walkMode = true;
+			player.pos = {cam.eye.x, cam.eye.y - kEyeAboveCenter, cam.eye.z};
+			player.vel = {};
+			player.onGround = false;
+			simAccum = 0.0f;
+			std::puts("walk mode (G): WASD walk, SPACE jump, F to fly");
 		}
-		if (keyDown('S')) {
-			cam.eye.x -= fwd.x * moveSpeed;
-			cam.eye.y -= fwd.y * moveSpeed;
-			cam.eye.z -= fwd.z * moveSpeed;
+		if (fNow && !prevF && walkMode) {
+			walkMode = false;
+			std::puts("fly mode (F): WASD fly, Q/E down/up, G to walk");
 		}
-		if (keyDown('A')) {
-			cam.eye.x -= right.x * moveSpeed;
-			cam.eye.z -= right.z * moveSpeed;
+		prevG = gNow;
+		prevF = fNow;
+
+		if (walkMode) {
+			// Camera-frame trig -> world-space intent, normalized on the
+			// PRESENTATION side; the deterministic kernel only ever sees the
+			// resulting floats. Holding SPACE re-jumps on landing (kernel
+			// semantics — see player.hpp).
+			float ix = 0.0f, iz = 0.0f;
+			const float fx = std::cos(yaw), fz = std::sin(yaw);
+			if (keyDown('W')) {
+				ix += fx;
+				iz += fz;
+			}
+			if (keyDown('S')) {
+				ix -= fx;
+				iz -= fz;
+			}
+			if (keyDown('D')) {
+				ix += -std::sin(yaw);
+				iz += std::cos(yaw);
+			}
+			if (keyDown('A')) {
+				ix -= -std::sin(yaw);
+				iz -= std::cos(yaw);
+			}
+			const float len = std::sqrt(ix * ix + iz * iz);
+			if (len > 1.0f) {
+				ix /= len;
+				iz /= len;
+			}
+			const sim::PlayerInput in{ix, iz, keyDown(VK_SPACE)};
+
+			// Fixed-dt accumulator: render rate varies, simulation ticks do
+			// not. Input is sampled once per FRAME and held for every tick
+			// the accumulator releases (catch-up ticks reuse it). The clamp
+			// bounds catch-up work after a stall (no spiral of death);
+			// walking is interactive here, replay-determinism is the test
+			// suite's claim.
+			simAccum += dt > 0.25f ? 0.25f : dt;
+			while (simAccum >= simParams.dt) {
+				sim::playerStep(player, in, walkParams, simParams,
+						sim::WorldOffset{}, &world::SolidityWorld::solidAt,
+						&solidity);
+				simAccum -= simParams.dt;
+			}
+			if (player.pos.y < -16.0f) { // walked off the region into the void
+				player.pos = kSpawn;
+				player.vel = {};
+				std::puts("fell out of the world - respawned");
+			}
+			cam.eye = {player.pos.x, player.pos.y + kEyeAboveCenter,
+					player.pos.z};
+		} else {
+			const float moveSpeed = 40.0f * dt;
+			if (keyDown('W')) {
+				cam.eye.x += fwd.x * moveSpeed;
+				cam.eye.y += fwd.y * moveSpeed;
+				cam.eye.z += fwd.z * moveSpeed;
+			}
+			if (keyDown('S')) {
+				cam.eye.x -= fwd.x * moveSpeed;
+				cam.eye.y -= fwd.y * moveSpeed;
+				cam.eye.z -= fwd.z * moveSpeed;
+			}
+			if (keyDown('A')) {
+				cam.eye.x -= right.x * moveSpeed;
+				cam.eye.z -= right.z * moveSpeed;
+			}
+			if (keyDown('D')) {
+				cam.eye.x += right.x * moveSpeed;
+				cam.eye.z += right.z * moveSpeed;
+			}
+			if (keyDown('Q'))
+				cam.eye.y -= moveSpeed;
+			if (keyDown('E'))
+				cam.eye.y += moveSpeed;
 		}
-		if (keyDown('D')) {
-			cam.eye.x += right.x * moveSpeed;
-			cam.eye.z += right.z * moveSpeed;
-		}
-		if (keyDown('Q'))
-			cam.eye.y -= moveSpeed;
-		if (keyDown('E'))
-			cam.eye.y += moveSpeed;
 		cam.target = {cam.eye.x + fwd.x, cam.eye.y + fwd.y, cam.eye.z + fwd.z};
 
 		// Paced presentation (issue #22): semaphore-chained acquire ->

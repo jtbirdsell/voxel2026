@@ -62,16 +62,27 @@ struct WorldOffset {
 	std::int32_t x = 0, y = 0, z = 0;
 };
 
-// Advance one entity by params.dt: apply gravity + damping + speed clamp,
-// then per-axis (Y, X, Z) substepped move-and-clamp against worldSolid()
-// translated by `origin` (integer-only translation). Sets onGround when
-// downward motion is blocked. Positions are clamped to stay well inside the
-// float-exact integer range.
-void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origin);
+// Injected world solidity (issue #23): the step consults the world through
+// this function pointer + context. The callback must be PURE INTEGER work
+// (chunk lookup, index math, content compare) — it executes outside the
+// pinned-FP translation unit, which is safe precisely because no FP touches
+// it; any FP inside a solidity callback would be unpinned and break the
+// determinism contract. It must also be pure/stable for a given world state.
+using SolidFn = bool (*)(std::int32_t x, std::int32_t y, std::int32_t z,
+		const void *ctx);
 
-// Zero-origin convenience — bit-identical to the original spike-3 entry
-// point (the offset adds integer zero to integer cell coordinates; no FP
-// path is affected, so the spike-3 goldens are untouched).
+// General entry point: advance one entity by params.dt against an injected
+// world — gravity + damping + speed clamp, then per-axis (Y, X, Z)
+// substepped move-and-clamp, queries translated by `origin` (integer-only).
+// Sets onGround when downward motion is blocked. Positions are clamped to
+// stay well inside the float-exact integer range.
+void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origin,
+		SolidFn solid, const void *ctx);
+
+// Spike-world entry points — bit-identical to the original spike-3 paths
+// (they pass a worldSolid trampoline; the FP arithmetic is untouched by the
+// callback refactor, which the committed goldens gate).
+void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origin);
 void collisionStep(Entity &e, const StepParams &params);
 
 } // namespace sim
