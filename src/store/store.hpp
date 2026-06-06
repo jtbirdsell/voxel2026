@@ -29,7 +29,10 @@
 namespace world {
 
 enum class StoreSpace : std::uint8_t {
-	kChunks = 0,   // Contract-1 canonical blobs, keyed by chunk position
+	// Contract-1 canonical blobs, keyed by world/chunk_key.hpp's
+	// chunkStoreKey(x,y,z): 12 bytes, big-endian sign-flipped per axis
+	// (lexicographic order == numeric order).
+	kChunks = 0,
 	kLodNodes = 1, // Contract-2 payloads, keyed by the 13-byte storage key
 	kRegistry = 2, // the content-registry manifest (single well-known key)
 	kMeta = 3,     // world manifest / format-version odds and ends

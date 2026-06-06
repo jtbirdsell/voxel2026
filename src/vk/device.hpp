@@ -56,6 +56,14 @@ struct CapabilityReport {
 	bool meshPipelineReady = false;
 	std::string meshExecBlocked;
 
+	// Presentation tier (issue #21): instance surface extensions enabled and
+	// VK_KHR_swapchain enabled on the device. Per-surface queue support is
+	// checked by the windowed tool against its actual surface; this flag
+	// covers everything checkable without one. presentBlocked names the
+	// failed gate, same contract as meshExecBlocked.
+	bool presentReady = false;
+	std::string presentBlocked;
+
 	std::string failureReason;       // set when available == false
 };
 
@@ -77,6 +85,7 @@ public:
 	const CapabilityReport &report() const { return m_report; }
 
 	VkDevice device() const { return m_device; }
+	VkInstance instance() const { return m_instance; } // surface creation (tier gated)
 	VkPhysicalDevice physicalDevice() const { return m_physical; }
 	VkQueue computeQueue() const { return m_queue; }
 	std::uint32_t computeQueueFamily() const { return m_report.computeQueueFamily; }

@@ -27,6 +27,7 @@ add_executable(voxel2026_tests
 	test_vct.cpp
 	test_vk.cpp
 	test_voxel_blob.cpp
+	test_worldview.cpp
 )
 target_link_libraries(voxel2026_tests PRIVATE voxel2026_core voxel2026_gen voxel2026_mesh
 	voxel2026_sim voxel2026_store voxel2026_vk voxel2026_warnings voxel2026_sanitize

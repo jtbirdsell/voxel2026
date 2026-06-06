@@ -1,0 +1,380 @@
+// First world view (issue #21) — the developer-hardware demo that FLIES a
+// free camera through a minigen world rendered by the connected belt:
+// generate -> Contract-1 blob -> SQLite store -> unpack -> greedy mesh on
+// the job system -> world-view renderer -> swapchain. ("Walking" — player
+// collision, gravity, a capsule — is Phase 2's player story; this milestone
+// is the rendered, navigable world, named honestly.)
+//
+// Windows-only dev tool (the offscreen renderer is the CI-validated path;
+// this is the human-facing one). Controls: WASD move, arrow keys look,
+// Q/E down/up, ESC quit. --frames N exits after N frames (automation);
+// --db PATH persists the world between runs (default: in-memory).
+//
+// v1 is a correctness demo: the renderer does full per-frame setup, and
+// presentation is host-synchronized (fence-based acquire, render fully
+// fence-waited before present) — frame pacing/reuse are the perf issue's
+// scope, deliberately not this one's.
+
+#if !defined(_WIN32)
+#include <cstdio>
+int main()
+{
+	std::puts("world_view is a Windows-only demo in v1 (the offscreen renderer "
+			  "is the portable, CI-validated path)");
+	return 0;
+}
+#else
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_win32.h>
+
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include "jobs/jobs.hpp"
+#include "mesh/parallel.hpp"
+#include "store/sqlite_store.hpp"
+#include "vk/device.hpp"
+#include "vk/worldview.hpp"
+#include "world/belt.hpp"
+
+namespace {
+
+bool opaqueNonZero(const world::CellValue &c)
+{
+	return c.content != 0;
+}
+
+LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l)
+{
+	if (msg == WM_DESTROY) {
+		PostQuitMessage(0);
+		return 0;
+	}
+	return DefWindowProcW(hwnd, msg, w, l);
+}
+
+bool keyDown(int virtualKey)
+{
+	return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+}
+
+} // namespace
+
+int main(int argc, char **argv)
+{
+	std::uint64_t maxFrames = ~0ull;
+	std::string dbPath = ":memory:";
+	for (int i = 1; i < argc; ++i) {
+		if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc)
+			maxFrames = std::strtoull(argv[++i], nullptr, 10);
+		else if (std::strcmp(argv[i], "--db") == 0 && i + 1 < argc)
+			dbPath = argv[++i];
+	}
+
+	vk::Device dev;
+	if (!dev.available()) {
+		std::printf("Vulkan unavailable: %s\n", dev.report().failureReason.c_str());
+		return 0;
+	}
+	if (!dev.report().presentReady) {
+		std::printf("presentation tier unavailable: %s\n",
+				dev.report().presentBlocked.c_str());
+		return 0;
+	}
+
+	// ---- The belt: load-or-generate an 8x2x8 chunk region, mesh it on the
+	// job system, remap slots to world-consistent content ids.
+	world::SqliteStore store(dbPath);
+	if (!store.ok()) {
+		std::printf("store unavailable: %s\n", store.error().c_str());
+		return 1;
+	}
+	const auto beltT0 = std::chrono::steady_clock::now();
+	const auto belt =
+			world::loadOrGenerateRegion(store, gen::kStandardSeed, 0, 0, 0, 7, 1, 7);
+	std::vector<world::UnpackedChunk> chunks;
+	chunks.reserve(belt.size());
+	for (const auto &bc : belt)
+		chunks.push_back(bc.chunk);
+	jobs::JobSystem js;
+	auto meshes = mesh::meshChunksParallel(chunks, opaqueNonZero, js);
+	std::uint64_t quads = 0;
+	for (std::size_t i = 0; i < meshes.size(); ++i) {
+		world::remapSlotsToContent(meshes[i], chunks[i]);
+		quads += meshes[i].quadCount;
+	}
+	std::vector<vk::ChunkDraw> draws;
+	for (std::size_t i = 0; i < belt.size(); ++i)
+		if (meshes[i].quadCount > 0)
+			draws.push_back({{static_cast<float>(belt[i].x * 16),
+									 static_cast<float>(belt[i].y * 16),
+									 static_cast<float>(belt[i].z * 16)},
+					&meshes[i]});
+	const auto beltT1 = std::chrono::steady_clock::now();
+	std::printf("belt: %zu chunks (%zu drawn), %llu quads, %.1f ms on %u threads\n",
+			belt.size(), draws.size(), static_cast<unsigned long long>(quads),
+			std::chrono::duration<double, std::milli>(beltT1 - beltT0).count(),
+			js.threadCount());
+
+	// ---- Window.
+	const HINSTANCE hinst = GetModuleHandleW(nullptr);
+	WNDCLASSW wc{};
+	wc.lpfnWndProc = wndProc;
+	wc.hInstance = hinst;
+	wc.lpszClassName = L"voxel2026_world_view";
+	wc.hCursor = LoadCursorA(nullptr, IDC_ARROW); // ANSI macro w/o UNICODE define
+	RegisterClassW(&wc);
+	const std::uint32_t winW = 1280, winH = 720;
+	RECT rect{0, 0, static_cast<LONG>(winW), static_cast<LONG>(winH)};
+	AdjustWindowRect(&rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, FALSE);
+	HWND hwnd = CreateWindowExW(0, wc.lpszClassName,
+			L"voxel2026 — first walkable world (WASD move, arrows look, ESC quits)",
+			WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
+			rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr, hinst,
+			nullptr);
+	if (!hwnd) {
+		std::puts("window creation failed");
+		return 1;
+	}
+	ShowWindow(hwnd, SW_SHOW);
+
+	// ---- Surface + swapchain via the dynamic loader.
+	const auto ip = [&dev](const char *name) { return dev.instanceLevelProc(name); };
+	const auto dp = [&dev](const char *name) { return dev.deviceProc(name); };
+#define LOAD_I(fn) auto fn##_ = reinterpret_cast<PFN_##fn>(ip(#fn))
+#define LOAD_D(fn) auto fn##_ = reinterpret_cast<PFN_##fn>(dp(#fn))
+	LOAD_I(vkCreateWin32SurfaceKHR);
+	LOAD_I(vkGetPhysicalDeviceSurfaceSupportKHR);
+	LOAD_I(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+	LOAD_I(vkGetPhysicalDeviceSurfaceFormatsKHR);
+	LOAD_I(vkDestroySurfaceKHR);
+	LOAD_D(vkCreateSwapchainKHR);
+	LOAD_D(vkGetSwapchainImagesKHR);
+	LOAD_D(vkAcquireNextImageKHR);
+	LOAD_D(vkQueuePresentKHR);
+	LOAD_D(vkDestroySwapchainKHR);
+	LOAD_D(vkCreateImageView);
+	LOAD_D(vkDestroyImageView);
+	LOAD_D(vkCreateFence);
+	LOAD_D(vkWaitForFences);
+	LOAD_D(vkResetFences);
+	LOAD_D(vkDestroyFence);
+#undef LOAD_I
+#undef LOAD_D
+	if (!vkCreateWin32SurfaceKHR_ || !vkGetPhysicalDeviceSurfaceSupportKHR_ ||
+			!vkGetPhysicalDeviceSurfaceCapabilitiesKHR_ ||
+			!vkGetPhysicalDeviceSurfaceFormatsKHR_ || !vkDestroySurfaceKHR_ ||
+			!vkCreateSwapchainKHR_ || !vkGetSwapchainImagesKHR_ ||
+			!vkAcquireNextImageKHR_ || !vkQueuePresentKHR_ || !vkDestroySwapchainKHR_ ||
+			!vkCreateImageView_ || !vkDestroyImageView_ || !vkCreateFence_ ||
+			!vkWaitForFences_ || !vkResetFences_ || !vkDestroyFence_) {
+		std::puts("surface/swapchain entry points not resolvable");
+		return 1;
+	}
+
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
+	VkWin32SurfaceCreateInfoKHR sci{};
+	sci.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+	sci.hinstance = hinst;
+	sci.hwnd = hwnd;
+	if (vkCreateWin32SurfaceKHR_(dev.instance(), &sci, nullptr, &surface) !=
+			VK_SUCCESS) {
+		std::puts("surface creation failed");
+		return 1;
+	}
+
+	VkBool32 supported = VK_FALSE;
+	vkGetPhysicalDeviceSurfaceSupportKHR_(dev.physicalDevice(),
+			dev.graphicsQueueFamily(), surface, &supported);
+	if (!supported) {
+		std::puts("graphics queue family cannot present to this surface");
+		vkDestroySurfaceKHR_(dev.instance(), surface, nullptr);
+		return 1;
+	}
+
+	VkSurfaceCapabilitiesKHR caps{};
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR_(dev.physicalDevice(), surface, &caps);
+	std::uint32_t fmtCount = 0;
+	vkGetPhysicalDeviceSurfaceFormatsKHR_(dev.physicalDevice(), surface, &fmtCount,
+			nullptr);
+	std::vector<VkSurfaceFormatKHR> formats(fmtCount);
+	vkGetPhysicalDeviceSurfaceFormatsKHR_(dev.physicalDevice(), surface, &fmtCount,
+			formats.data());
+	VkSurfaceFormatKHR chosen = formats.empty()
+			? VkSurfaceFormatKHR{VK_FORMAT_B8G8R8A8_UNORM,
+					  VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}
+			: formats[0];
+	for (const VkSurfaceFormatKHR &f : formats)
+		if (f.format == VK_FORMAT_B8G8R8A8_UNORM) {
+			chosen = f;
+			break;
+		}
+	const VkExtent2D extent = caps.currentExtent.width != 0xFFFFFFFFu
+			? caps.currentExtent
+			: VkExtent2D{winW, winH};
+
+	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+	VkSwapchainCreateInfoKHR scci{};
+	scci.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	scci.surface = surface;
+	scci.minImageCount = caps.minImageCount + (caps.maxImageCount == 0 ||
+											  caps.maxImageCount > caps.minImageCount
+									? 1
+									: 0);
+	scci.imageFormat = chosen.format;
+	scci.imageColorSpace = chosen.colorSpace;
+	scci.imageExtent = extent;
+	scci.imageArrayLayers = 1;
+	scci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	scci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	scci.preTransform = caps.currentTransform;
+	scci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	scci.presentMode = VK_PRESENT_MODE_FIFO_KHR; // always available
+	scci.clipped = VK_TRUE;
+	if (vkCreateSwapchainKHR_(dev.device(), &scci, nullptr, &swapchain) != VK_SUCCESS) {
+		std::puts("swapchain creation failed");
+		vkDestroySurfaceKHR_(dev.instance(), surface, nullptr);
+		return 1;
+	}
+	std::uint32_t imageCount = 0;
+	vkGetSwapchainImagesKHR_(dev.device(), swapchain, &imageCount, nullptr);
+	std::vector<VkImage> images(imageCount);
+	vkGetSwapchainImagesKHR_(dev.device(), swapchain, &imageCount, images.data());
+	std::vector<VkImageView> views(imageCount, VK_NULL_HANDLE);
+	for (std::uint32_t i = 0; i < imageCount; ++i) {
+		VkImageViewCreateInfo vci{};
+		vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		vci.image = images[i];
+		vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		vci.format = chosen.format;
+		vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+		vkCreateImageView_(dev.device(), &vci, nullptr, &views[i]);
+	}
+	VkFence acquireFence = VK_NULL_HANDLE;
+	VkFenceCreateInfo fci{};
+	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	vkCreateFence_(dev.device(), &fci, nullptr, &acquireFence);
+
+	// ---- Free-fly loop.
+	vk::WorldCamera cam;
+	cam.eye = {64, 56, 150};
+	float yaw = -1.5708f; // facing -Z
+	float pitch = -0.35f;
+	std::uint64_t frames = 0;
+	double frameMsAccum = 0;
+	auto last = std::chrono::steady_clock::now();
+	bool running = true;
+	while (running && frames < maxFrames) {
+		MSG msg;
+		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+			if (msg.message == WM_QUIT)
+				running = false;
+			TranslateMessage(&msg);
+			DispatchMessageW(&msg);
+		}
+		if (!running || keyDown(VK_ESCAPE))
+			break;
+
+		const auto now = std::chrono::steady_clock::now();
+		const float dt =
+				std::chrono::duration<float>(now - last).count();
+		last = now;
+
+		const float lookSpeed = 1.6f * dt;
+		if (keyDown(VK_LEFT))
+			yaw -= lookSpeed;
+		if (keyDown(VK_RIGHT))
+			yaw += lookSpeed;
+		if (keyDown(VK_UP))
+			pitch += lookSpeed;
+		if (keyDown(VK_DOWN))
+			pitch -= lookSpeed;
+		pitch = pitch < -1.5f ? -1.5f : (pitch > 1.5f ? 1.5f : pitch);
+		const vk::Float3 fwd{std::cos(pitch) * std::cos(yaw), std::sin(pitch),
+				std::cos(pitch) * std::sin(yaw)};
+		const vk::Float3 right{-std::sin(yaw), 0, std::cos(yaw)};
+		const float moveSpeed = 40.0f * dt;
+		if (keyDown('W')) {
+			cam.eye.x += fwd.x * moveSpeed;
+			cam.eye.y += fwd.y * moveSpeed;
+			cam.eye.z += fwd.z * moveSpeed;
+		}
+		if (keyDown('S')) {
+			cam.eye.x -= fwd.x * moveSpeed;
+			cam.eye.y -= fwd.y * moveSpeed;
+			cam.eye.z -= fwd.z * moveSpeed;
+		}
+		if (keyDown('A')) {
+			cam.eye.x -= right.x * moveSpeed;
+			cam.eye.z -= right.z * moveSpeed;
+		}
+		if (keyDown('D')) {
+			cam.eye.x += right.x * moveSpeed;
+			cam.eye.z += right.z * moveSpeed;
+		}
+		if (keyDown('Q'))
+			cam.eye.y -= moveSpeed;
+		if (keyDown('E'))
+			cam.eye.y += moveSpeed;
+		cam.target = {cam.eye.x + fwd.x, cam.eye.y + fwd.y, cam.eye.z + fwd.z};
+
+		// Acquire (fence-synchronized), render (fully fence-waited inside),
+		// present — host-serial v1 presentation.
+		std::uint32_t imageIndex = 0;
+		vkResetFences_(dev.device(), 1, &acquireFence);
+		const VkResult acq = vkAcquireNextImageKHR_(dev.device(), swapchain, ~0ull,
+				VK_NULL_HANDLE, acquireFence, &imageIndex);
+		if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR)
+			break;
+		vkWaitForFences_(dev.device(), 1, &acquireFence, VK_TRUE, ~0ull);
+
+		std::uint64_t drawn = 0;
+		std::string err;
+		if (!vk::renderWorldViewInto(dev, draws, cam, views[imageIndex],
+					chosen.format, extent.width, extent.height,
+					VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, drawn, err)) {
+			std::printf("render failed: %s\n", err.c_str());
+			break;
+		}
+
+		VkPresentInfoKHR present{};
+		present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		present.swapchainCount = 1;
+		present.pSwapchains = &swapchain;
+		present.pImageIndices = &imageIndex;
+		vkQueuePresentKHR_(dev.graphicsQueue(), &present);
+
+		frameMsAccum +=
+				std::chrono::duration<double, std::milli>(
+						std::chrono::steady_clock::now() - now)
+						.count();
+		++frames;
+	}
+
+	// Honesty note: this is APPLICATION frame time (input + full per-frame
+	// renderer setup + GPU + present, host-serialized) — not GPU render
+	// cost. Timestamp-query instrumentation belongs to the perf issue.
+	if (frames > 0)
+		std::printf("frames: %llu, mean application frame %.1f ms (host-serial v1)\n",
+				static_cast<unsigned long long>(frames), frameMsAccum / double(frames));
+
+	// Teardown (queue idle is implied: every frame is fence-waited to completion).
+	vkDestroyFence_(dev.device(), acquireFence, nullptr);
+	for (VkImageView v : views)
+		if (v)
+			vkDestroyImageView_(dev.device(), v, nullptr);
+	vkDestroySwapchainKHR_(dev.device(), swapchain, nullptr);
+	vkDestroySurfaceKHR_(dev.instance(), surface, nullptr);
+	DestroyWindow(hwnd);
+	return 0;
+}
+#endif

@@ -80,6 +80,14 @@ target_link_libraries(vct_bench PRIVATE voxel2026_vk voxel2026_warnings)
 add_executable(mesh_bench tools/mesh_bench.cpp)
 target_link_libraries(mesh_bench PRIVATE voxel2026_gen voxel2026_mesh voxel2026_warnings)
 
+# First walkable world (issue #21): windowed free-fly demo over the belt.
+# Windows-only in v1; the offscreen renderer is the portable validated path.
+if(WIN32)
+	add_executable(world_view tools/world_view.cpp)
+	target_link_libraries(world_view PRIVATE voxel2026_gen voxel2026_jobs voxel2026_mesh
+		voxel2026_store voxel2026_vk voxel2026_warnings)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
 	add_subdirectory(tests)

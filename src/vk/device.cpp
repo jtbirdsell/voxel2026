@@ -117,6 +117,38 @@ Device::Device()
 		return;
 	}
 
+	// Surface instance extensions (issue #21): enabled when the loader
+	// advertises them — probed by NAME, requested only if present, so
+	// headless hosts (CI, servers) come up exactly as before with the
+	// presentation tier reported blocked instead of anything failing.
+	std::vector<const char *> instanceExts;
+	bool haveSurfaceExts = false;
+	{
+		auto vkEnumerateInstanceExtensionProperties_ =
+				reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
+						iproc(VK_NULL_HANDLE, "vkEnumerateInstanceExtensionProperties"));
+		if (vkEnumerateInstanceExtensionProperties_) {
+			std::uint32_t n = 0;
+			vkEnumerateInstanceExtensionProperties_(nullptr, &n, nullptr);
+			std::vector<VkExtensionProperties> exts(n);
+			if (n > 0)
+				vkEnumerateInstanceExtensionProperties_(nullptr, &n, exts.data());
+#if defined(_WIN32)
+			const char *platformSurface = "VK_KHR_win32_surface";
+#elif defined(__APPLE__)
+			const char *platformSurface = "VK_EXT_metal_surface";
+#else
+			const char *platformSurface = "VK_KHR_xcb_surface";
+#endif
+			if (hasExtension(exts, "VK_KHR_surface") &&
+					hasExtension(exts, platformSurface)) {
+				instanceExts.push_back("VK_KHR_surface");
+				instanceExts.push_back(platformSurface);
+				haveSurfaceExts = true;
+			}
+		}
+	}
+
 	VkApplicationInfo app{};
 	app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	app.pApplicationName = "voxel2026";
@@ -124,6 +156,8 @@ Device::Device()
 	VkInstanceCreateInfo ici{};
 	ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	ici.pApplicationInfo = &app;
+	ici.enabledExtensionCount = static_cast<std::uint32_t>(instanceExts.size());
+	ici.ppEnabledExtensionNames = instanceExts.empty() ? nullptr : instanceExts.data();
 	std::uint32_t instanceApi = VK_API_VERSION_1_1;
 	VkResult instRes = vkCreateInstance_(&ici, nullptr, &m_instance);
 	if (instRes == VK_ERROR_INCOMPATIBLE_DRIVER) {
@@ -275,11 +309,23 @@ Device::Device()
 		}
 	}
 
+	// ---- Presentation-tier preconditions (issue #21).
+	bool wantPresent = false;
+	if (!haveSurfaceExts) {
+		m_report.presentBlocked = "instance surface extensions unavailable";
+	} else if (m_report.graphicsQueueFamily == ~0u) {
+		m_report.presentBlocked = "no graphics-capable queue family";
+	} else if (!hasExtension(exts, "VK_KHR_swapchain")) {
+		m_report.presentBlocked = "VK_KHR_swapchain not present";
+	} else {
+		wantPresent = true;
+	}
+
 	// ---- Logical device: one compute queue, plus the graphics queue and
-	// VK_EXT_mesh_shader when the tier preconditions hold. If the
-	// mesh-enabled creation fails, fall back to the plain compute-only
-	// device — the compute path must never regress because a graphics tier
-	// was attempted (degradation contract).
+	// the tier extensions (mesh shading, swapchain) when their
+	// preconditions hold. If the tiered creation fails, fall back to the
+	// plain compute-only device — the compute path must never regress
+	// because a graphics tier was attempted (degradation contract).
 	const float priority = 1.0f;
 	VkDeviceQueueCreateInfo qcis[2] = {};
 	qcis[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -287,7 +333,9 @@ Device::Device()
 	qcis[0].queueCount = 1;
 	qcis[0].pQueuePriorities = &priority;
 	std::uint32_t queueInfoCount = 1;
-	if (wantMesh && m_report.graphicsQueueFamily != m_report.computeQueueFamily) {
+	const bool wantGraphicsQueue = wantMesh || wantPresent;
+	if (wantGraphicsQueue &&
+			m_report.graphicsQueueFamily != m_report.computeQueueFamily) {
 		qcis[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		qcis[1].queueFamilyIndex = m_report.graphicsQueueFamily;
 		qcis[1].queueCount = 1;
@@ -300,25 +348,33 @@ Device::Device()
 	dci.queueCreateInfoCount = queueInfoCount;
 	dci.pQueueCreateInfos = qcis;
 
-	if (wantMesh) {
-		// Request exactly the feature this tier uses (meshShader; no task
-		// stage yet — ADR-0002's condition is mesh-stage execution).
+	if (wantMesh || wantPresent) {
+		// Request exactly the verified features (meshShader only; no task
+		// stage yet — ADR-0002's condition was mesh-stage execution).
 		VkPhysicalDeviceMeshShaderFeaturesEXT meshEnable{};
 		meshEnable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
 		meshEnable.meshShader = VK_TRUE;
 		VkPhysicalDeviceFeatures2 feat2{};
 		feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 		feat2.pNext = &meshEnable;
-		const char *meshExt = "VK_EXT_mesh_shader";
-		VkDeviceCreateInfo meshDci = dci;
-		meshDci.pNext = &feat2;
-		meshDci.enabledExtensionCount = 1;
-		meshDci.ppEnabledExtensionNames = &meshExt;
-		if (vkCreateDevice_(m_physical, &meshDci, nullptr, &m_device) == VK_SUCCESS) {
-			m_report.meshPipelineReady = true;
+		std::vector<const char *> devExts;
+		if (wantMesh)
+			devExts.push_back("VK_EXT_mesh_shader");
+		if (wantPresent)
+			devExts.push_back("VK_KHR_swapchain");
+		VkDeviceCreateInfo tierDci = dci;
+		if (wantMesh)
+			tierDci.pNext = &feat2; // features chain only with its extension
+		tierDci.enabledExtensionCount = static_cast<std::uint32_t>(devExts.size());
+		tierDci.ppEnabledExtensionNames = devExts.data();
+		if (vkCreateDevice_(m_physical, &tierDci, nullptr, &m_device) == VK_SUCCESS) {
+			m_report.meshPipelineReady = wantMesh;
+			m_report.presentReady = wantPresent;
 		} else {
 			m_device = VK_NULL_HANDLE; // fall back to the plain device below
-			m_report.meshExecBlocked = "mesh-enabled vkCreateDevice failed";
+			if (wantMesh)
+				m_report.meshExecBlocked = "tier-enabled vkCreateDevice failed";
+			m_report.presentBlocked = "tier-enabled vkCreateDevice failed";
 		}
 	}
 	if (m_device == VK_NULL_HANDLE) {
@@ -331,7 +387,7 @@ Device::Device()
 	vkGetDeviceQueue_(m_device, m_report.computeQueueFamily, 0, &m_queue);
 	// Queue index 0 in either case: same-family shares the one created
 	// queue; a distinct graphics family had exactly one queue created too.
-	if (m_report.meshPipelineReady)
+	if (m_report.meshPipelineReady || m_report.presentReady)
 		vkGetDeviceQueue_(m_device, m_report.graphicsQueueFamily, 0, &m_graphicsQueue);
 
 	m_report.available = true;
