@@ -253,7 +253,10 @@ The lens where clean break pays most. Replaces mapnode.h/mapblock.h/database/\* 
   (review-added)**: index width grows in steps with hysteresis; bulk writes (mapgen fill,
   schematic paste, explosions) batch under one repack; a hot-path read-unpack budget joins Part
   VII's perf gates.
-- **Layout**: SoA, Morton-ordered within chunk, 8³ brick granularity. **Byte-identical CPU↔GPU**
+- **Layout**: palette-indexed — a dense Morton-ordered per-cell index stream over AoS palette
+  records, 8³ brick granularity ("SoA" in earlier drafts was imprecise: the dense per-cell array
+  is the index stream, while palette entries are 16-byte records; frozen as such in Contract 1,
+  divergence recorded in ADR-0009). **Byte-identical CPU↔GPU**
   — the mesher/ray-marcher reads the per-chunk palette + width header in-shader, no per-frame
   transcode. Disk holds the same layout *compressed at rest* — one decompress on load, canonical
   thereafter ("byte-identical three ways" was an overclaim; review-corrected).
