@@ -9,6 +9,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(voxel2026_tests
+	test_capability.cpp
 	test_collision_step.cpp
 	test_det_math.cpp
 	test_identity.cpp

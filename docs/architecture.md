@@ -335,9 +335,13 @@ The lens where clean break pays most. Replaces mapnode.h/mapblock.h/database/\* 
   VM** — safepoint interrupts cannot bound long native calls, and instruction counts are not
   wall-clock; outstanding buffer lifetimes invalidate safely on teardown. Timing/cache side
   channels are explicitly out of scope for the Luau tier; genuinely hostile-server paranoia routes
-  to the **WASM (Wasmtime) hardened tier**. (Also corrected: current SSCSM is a working scaffold
-  with a dedicated thread and IPC plumbing, not a bare skeleton — what's missing is exactly this
-  hardening.)
+  to the **WASM (Wasmtime) hardened tier**. Capability surface (frozen in Contract 6, invariant 7):
+  server-sent client scripts get **no ambient-I/O grants ever** — no `fs:*`, no `net:*`
+  (server-mediated requests route through the server's own grants); the client isolate's surface is
+  UI/intent/server-scoped `storage`, and anything needing more on a hostile-server threat model
+  routes to the WASM tier, never to a wider Luau grant. (Also corrected: current SSCSM is a working
+  scaffold with a dedicated thread and IPC plumbing, not a bare skeleton — what's missing is exactly
+  this hardening.)
 - **Bulk voxel access — zero-copy claim retracted (review finding: Luau `buffer`s own their
   memory; aliasing views over engine arrays are not expressible without forking the VM)**: the
   VoxelManip successor uses **single-memcpy packed snapshots** — copy-in/mutate/blit-out of the
