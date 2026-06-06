@@ -12,6 +12,11 @@ FetchContent_Declare(
 	GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
 	GIT_TAG        v1.3.290
 )
+# We consume HEADERS only. Vulkan-Headers' CMake auto-enables a C++20-modules
+# target (Vulkan-Module) when it detects clang >= 16 — which the Unix
+# Makefiles generator cannot build, breaking the linux-clang CI legs at
+# configure time (CMP0077 makes this plain variable override their option()).
+set(VULKAN_HEADERS_ENABLE_MODULE OFF)
 FetchContent_MakeAvailable(VulkanHeaders)
 
 # Embed the committed SPIR-V as a C array at configure time (no runtime file
