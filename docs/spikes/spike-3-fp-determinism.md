@@ -1,7 +1,8 @@
 # Spike 3 — Shared collision step FP determinism across builds
 
 **Issue:** [#3](https://github.com/jtbirdsell/voxel2026/issues/3) · **Contract:**
-[Contract 5](../contracts/contract-5-collision-step.md) · **Status:** experiment running
+[Contract 5](../contracts/contract-5-collision-step.md) · **Status:** **PASS** (current matrix,
+2026-06-05)
 
 ## Question
 
@@ -80,7 +81,28 @@ shipping toolchains" — this measures it.
 
 ## Results
 
-*Pending — filled in when the CI matrix reports.*
+**PASS — 2026-06-05, commit `607a296`,
+[run 27049326083](https://github.com/jtbirdsell/voxel2026/actions/runs/27049326083).**
+
+| Leg | Expectation | Result |
+|---|---|---|
+| windows-msvc Debug + Release | reproduce goldens | ✅ bit-identical (mint platform) |
+| linux-gcc Debug + Release | reproduce goldens | ✅ **bit-identical across OS + compiler + optimizer** |
+| linux-clang Debug + Release | reproduce goldens | ✅ **bit-identical across OS + compiler + optimizer** |
+| linux-gcc unpinned control (`-ffp-contract=fast -mfma`) | **diverge** | ✅ diverged at every checkpoint |
+
+All 8 golden checkpoint hashes — minted on Windows x64 MSVC `/fp:strict` Release — were
+reproduced exactly by GCC and Clang on Linux at both optimization levels, including the
+subnormal-probe trajectories. The negative control diverged from checkpoint 0 onward, proving
+the experiment had the power to detect contraction (locally verified the same on MSVC
+`/fp:fast /arch:AVX2`, which also surfaced that `/fp:fast` sets `FLT_EVAL_METHOD` to −1 — the
+conformance guard correctly rejects such builds, and the control bypasses it explicitly).
+
+**Verdict for Contract 5:** the pinned mechanism (isolated TU + `/fp:strict` /
+`-ffp-contract=off -fno-fast-math` + IEEE-determined-ops-only + pinned FTZ/DAZ as a runtime
+precondition) is **validated on x86-64 Windows/Linux across MSVC/GCC/Clang and Debug/Release**.
+The replay harness runs in every CI build from now on — the blocking determinism gate Contract 5
+mandates exists as of this commit. Fixed-point fallback not needed on this matrix.
 
 ## Known limitations (honest scope)
 
