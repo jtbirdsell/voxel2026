@@ -4,10 +4,23 @@
 
 namespace vk {
 
-// Generated at configure time from src/vk/shaders/parity.comp.spv
-// (see src/vk/CMakeLists.txt); the .comp source is the artifact of record.
+// Generated at configure time from the committed .spv blobs
+// (see src/vk/CMakeLists.txt); the .comp/.slang sources are the artifacts of
+// record.
 extern const std::uint32_t kParitySpirv[];
 extern const std::size_t kParitySpirvWords;
+extern const std::uint32_t kParitySlangSpirv[];
+extern const std::size_t kParitySlangSpirvWords;
+
+std::span<const std::uint32_t> parityKernelGlslang()
+{
+	return {kParitySpirv, kParitySpirvWords};
+}
+
+std::span<const std::uint32_t> parityKernelSlang()
+{
+	return {kParitySlangSpirv, kParitySlangSpirvWords};
+}
 
 namespace {
 
@@ -167,6 +180,11 @@ std::uint32_t findHostVisibleMemoryType(const VkPhysicalDeviceMemoryProperties &
 
 ParityResult runParityDispatch(Device &dev)
 {
+	return runParityDispatch(dev, parityKernelGlslang());
+}
+
+ParityResult runParityDispatch(Device &dev, std::span<const std::uint32_t> spirv)
+{
 	ParityResult result;
 	result.elements = kElements;
 	if (!dev.available()) {
@@ -239,8 +257,8 @@ ParityResult runParityDispatch(Device &dev)
 	// ---- Pipeline.
 	VkShaderModuleCreateInfo smci{};
 	smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	smci.codeSize = kParitySpirvWords * sizeof(std::uint32_t);
-	smci.pCode = kParitySpirv;
+	smci.codeSize = spirv.size() * sizeof(std::uint32_t);
+	smci.pCode = spirv.data();
 	if (fn.vkCreateShaderModule(d, &smci, nullptr, &r.shader) != VK_SUCCESS)
 		return fail("vkCreateShaderModule rejected the embedded SPIR-V");
 

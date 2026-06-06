@@ -3,7 +3,9 @@
 // failure reason and exits 0 (probing "unavailable" is a valid answer).
 
 #include <cinttypes>
+#include <cstdint>
 #include <cstdio>
+#include <span>
 
 #include "vk/compute.hpp"
 #include "vk/device.hpp"
@@ -45,15 +47,27 @@ int main()
 	std::printf("acceleration_structure: %s\n", yn(r.accelerationStructure));
 	std::printf("timeline_semaphore:     %s\n", yn(r.timelineSemaphore));
 
-	const vk::ParityResult p = vk::runParityDispatch(dev);
-	std::puts("--- first compute dispatch ---");
-	if (!p.ran) {
-		std::printf("dispatch FAILED: %s\n", p.failureReason.c_str());
-		return 1;
+	const struct {
+		const char *name;
+		std::span<const std::uint32_t> spirv;
+	} kernels[] = {
+		{"glslang (parity.comp) ", vk::parityKernelGlslang()},
+		{"slang   (parity.slang)", vk::parityKernelSlang()},
+	};
+
+	bool allMatch = true;
+	for (const auto &k : kernels) {
+		const vk::ParityResult p = vk::runParityDispatch(dev, k.spirv);
+		std::printf("--- compute dispatch: %s ---\n", k.name);
+		if (!p.ran) {
+			std::printf("dispatch FAILED: %s\n", p.failureReason.c_str());
+			return 1;
+		}
+		std::printf("elements:               %" PRIu64 "\n", p.elements);
+		std::printf("GPU/CPU parity:         %s\n", p.match ? "MATCH" : "MISMATCH");
+		if (p.gpuMillis >= 0.0)
+			std::printf("GPU time:               %.4f ms\n", p.gpuMillis);
+		allMatch = allMatch && p.match;
 	}
-	std::printf("elements:               %" PRIu64 "\n", p.elements);
-	std::printf("GPU/CPU parity:         %s\n", p.match ? "MATCH" : "MISMATCH");
-	if (p.gpuMillis >= 0.0)
-		std::printf("GPU time:               %.4f ms\n", p.gpuMillis);
-	return p.match ? 0 : 1;
+	return allMatch ? 0 : 1;
 }

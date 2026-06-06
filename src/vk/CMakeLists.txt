@@ -19,22 +19,33 @@ FetchContent_Declare(
 set(VULKAN_HEADERS_ENABLE_MODULE OFF)
 FetchContent_MakeAvailable(VulkanHeaders)
 
-# Embed the committed SPIR-V as a C array at configure time (no runtime file
-# lookup, no extra tools). parity.comp is the artifact of record; regenerate
-# the .spv per the comment in that file.
-file(READ ${CMAKE_CURRENT_SOURCE_DIR}/shaders/parity.comp.spv PARITY_HEX HEX)
-string(LENGTH "${PARITY_HEX}" PARITY_HEX_LEN)
-math(EXPR PARITY_HEX_REM "${PARITY_HEX_LEN} % 8")
-if(PARITY_HEX_LEN EQUAL 0 OR NOT PARITY_HEX_REM EQUAL 0)
-	message(FATAL_ERROR
-		"shaders/parity.comp.spv is empty or not 4-byte aligned — regenerate it "
-		"(see the header comment in shaders/parity.comp)")
-endif()
-math(EXPR PARITY_SPIRV_WORDS "${PARITY_HEX_LEN} / 8")
-# Reassemble little-endian u32 words from the byte stream.
-string(REGEX REPLACE
-	"([0-9a-f][0-9a-f])([0-9a-f][0-9a-f])([0-9a-f][0-9a-f])([0-9a-f][0-9a-f])"
-	"0x\\4\\3\\2\\1u," PARITY_SPIRV_WORDS_INITIALIZER "${PARITY_HEX}")
+# Embed the committed SPIR-V blobs as C arrays at configure time (no runtime
+# file lookup, no extra tools). The .comp/.slang sources are the artifacts of
+# record; regenerate the .spv files per the comments in those files.
+function(voxel2026_embed_spirv SPV_PATH OUT_WORDS_VAR OUT_INIT_VAR)
+	# Re-run configure when a regenerated .spv changes on disk (review
+	# finding: file(READ) alone leaves the embedded array silently stale).
+	set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SPV_PATH})
+	file(READ ${SPV_PATH} _hex HEX)
+	string(LENGTH "${_hex}" _len)
+	math(EXPR _rem "${_len} % 8")
+	if(_len EQUAL 0 OR NOT _rem EQUAL 0)
+		message(FATAL_ERROR
+			"${SPV_PATH} is empty or not 4-byte aligned — regenerate it")
+	endif()
+	math(EXPR _words "${_len} / 8")
+	# Reassemble little-endian u32 words from the byte stream.
+	string(REGEX REPLACE
+		"([0-9a-f][0-9a-f])([0-9a-f][0-9a-f])([0-9a-f][0-9a-f])([0-9a-f][0-9a-f])"
+		"0x\\4\\3\\2\\1u," _init "${_hex}")
+	set(${OUT_WORDS_VAR} "${_words}" PARENT_SCOPE)
+	set(${OUT_INIT_VAR} "${_init}" PARENT_SCOPE)
+endfunction()
+
+voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/parity.comp.spv
+	PARITY_SPIRV_WORDS PARITY_SPIRV_WORDS_INITIALIZER)
+voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/parity.slang.spv
+	PARITY_SLANG_SPIRV_WORDS PARITY_SLANG_SPIRV_WORDS_INITIALIZER)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/spirv_embed.cpp.in
 	${CMAKE_CURRENT_BINARY_DIR}/spirv_embed.cpp @ONLY)
 

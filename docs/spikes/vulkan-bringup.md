@@ -1,8 +1,12 @@
 # Vulkan bring-up (Phase 0 deliverable; spike-4 prerequisite)
 
-**Status:** first slice complete (2026-06-06) — runtime loading, device bring-up, capability
-probe, first headless compute dispatch with GPU/CPU parity and timestamps. The Slang pipeline
-slice (ADR-0002's ratification gate) is next.
+**Status:** complete (2026-06-06) — runtime loading, device bring-up, capability probe,
+headless compute with GPU/CPU parity and timestamps, **and the Slang toolchain slice**: the same
+kernel compiled by slangc v2026.10.2 (pin: docs/tooling/slang.md) runs bit-exact on the 4090
+beside the glslang compilation (both MATCH; Slang's SPIR-V ~19% smaller, 832 vs 1032 bytes),
+reflection JSON validated, and mesh/task/vertex/fragment stage emission **checked compile-only**
+(committed probe `.spv` artifacts; not yet executed on hardware — that transfers to the first
+real mesh kernel). ADR-0002 is **Accepted** on this evidence.
 
 ## What exists
 

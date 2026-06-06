@@ -1,5 +1,6 @@
-// Generated at configure time from src/vk/shaders/parity.comp.spv — do not
-// edit. The GLSL source (parity.comp) is the artifact of record.
+// Generated at configure time from the committed .spv blobs — do not edit.
+// The GLSL/Slang sources (parity.comp, parity.slang) are the artifacts of
+// record.
 
 #include <cstddef>
 #include <cstdint>
@@ -8,10 +9,17 @@ namespace vk {
 
 extern const std::uint32_t kParitySpirv[];
 extern const std::size_t kParitySpirvWords;
+extern const std::uint32_t kParitySlangSpirv[];
+extern const std::size_t kParitySlangSpirvWords;
 
 const std::uint32_t kParitySpirv[] = {
 	@PARITY_SPIRV_WORDS_INITIALIZER@
 };
 const std::size_t kParitySpirvWords = @PARITY_SPIRV_WORDS@;
+
+const std::uint32_t kParitySlangSpirv[] = {
+	@PARITY_SLANG_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kParitySlangSpirvWords = @PARITY_SLANG_SPIRV_WORDS@;
 
 } // namespace vk

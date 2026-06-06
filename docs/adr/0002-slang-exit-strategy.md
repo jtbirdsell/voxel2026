@@ -1,6 +1,6 @@
 # ADR-0002 — Slang as shader toolchain, with exit strategy
 
-**Status:** Proposed
+**Status:** Accepted (2026-06-06) — with one standing condition, see Validation
 **Date:** 2026-06-05
 
 ## Context
@@ -22,11 +22,32 @@ its own merits, with a real exit plan.
 3. **HLSL + DXC** — mature SPIR-V backend, but glslang's HLSL path is deprecated and HLSL is a
    worse fit for a Khronos-aligned open project.
 
-## Decision (proposed)
+## Decision
 
-Option 1: Slang, **version-pinned** through the supply-chain gate. The Phase 0 Vulkan bring-up
-spike must validate vertex/fragment/compute *and* mesh/task-stage emission plus reflection before
-the decision is marked Accepted.
+Option 1: Slang, **version-pinned** through the supply-chain gate (validated against
+**slangc v2026.10.2**, official shader-slang/slang release binaries).
+
+## Validation (2026-06-06 — the acceptance gate, met)
+
+Toolchain pin (release tag, asset, SHA-256, regeneration commands):
+[docs/tooling/slang.md](../tooling/slang.md).
+
+- **Compute, executing on hardware**: `src/vk/shaders/parity.slang` compiled by slangc to
+  SPIR-V (committed `parity.slang.spv`, 832 bytes vs glslang's 1032 — ~19% smaller, for what a
+  23-line kernel's size is worth) runs on the RTX 4090 with **bit-exact GPU/CPU parity**, side
+  by side with the glslang kernel, in the test suite (`tests/test_vk.cpp`).
+- **Reflection**: `-reflection-json` emits correct binding metadata
+  (`parity.slang.reflection.json`, committed: set/slot 0, readWrite structuredBuffer<uint32>,
+  entry/stage) — the extraction the bindless/MDI paths will consume.
+- **Mesh-stage emission (compile-only)**: `meshprobe.slang` ([shader("mesh")]) → committed
+  `meshprobe.spv` (SPV_EXT_mesh_shader) — a reader can `spirv-val` the artifact rather than
+  trust a byte count.
+- **Vertex / fragment / amplification (task) emission (compile-only)**: `stageprobe.slang`
+  (three entries, one module) → committed `stageprobe.spv`.
+- **Standing condition**: pipeline-level mesh/task validation (an actual mesh pipeline executing
+  on the 4090) transfers to the first real mesh-shader kernel — emission alone is accepted as
+  the toolchain gate, execution as the renderer gate. Only the compute stage has *executed* on
+  hardware so far.
 
 ## Exit strategy
 

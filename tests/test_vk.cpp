@@ -6,6 +6,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
+#include <span>
+
 #include "vk/compute.hpp"
 #include "vk/device.hpp"
 
@@ -24,20 +27,29 @@ TEST_CASE("Vulkan device bring-up reports coherently or skips without a driver")
 		REQUIRE(r.accelerationStructure);
 }
 
-TEST_CASE("First compute dispatch: GPU output bit-equals the CPU mirror")
+TEST_CASE("Compute dispatch parity: glslang and Slang kernels both bit-equal the CPU mirror")
 {
 	vk::Device dev;
 	if (!dev.available())
 		SKIP("Vulkan unavailable on this host: " << dev.report().failureReason);
 
-	const vk::ParityResult p = vk::runParityDispatch(dev);
-	CAPTURE(p.failureReason);
-	REQUIRE(p.ran);
-	REQUIRE(p.match);
-	if (dev.report().timestampPeriodNs > 0.0f) {
-		// Timestamps must be present and sane (forward, sub-second for 4 MiB).
-		REQUIRE(p.gpuMillis >= 0.0);
-		REQUIRE(p.gpuMillis < 1000.0);
+	const struct {
+		const char *name;
+		std::span<const std::uint32_t> spirv;
+	} kernels[] = {
+		{"glslang (parity.comp)", vk::parityKernelGlslang()},
+		{"slang (parity.slang)", vk::parityKernelSlang()},
+	};
+
+	for (const auto &k : kernels) {
+		const vk::ParityResult p = vk::runParityDispatch(dev, k.spirv);
+		CAPTURE(k.name, p.failureReason);
+		REQUIRE(p.ran);
+		REQUIRE(p.match);
+		if (dev.report().timestampPeriodNs > 0.0f) {
+			REQUIRE(p.gpuMillis >= 0.0);
+			REQUIRE(p.gpuMillis < 1000.0);
+		}
 	}
 }
 

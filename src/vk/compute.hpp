@@ -7,12 +7,18 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "vk/device.hpp"
 
 namespace vk {
+
+// The two embedded compilations of the SAME kernel source semantics — the
+// ADR-0002 cross-toolchain evidence pair.
+std::span<const std::uint32_t> parityKernelGlslang(); // from parity.comp
+std::span<const std::uint32_t> parityKernelSlang();   // from parity.slang
 
 struct ParityResult {
 	bool ran = false;        // dispatch executed and read back
@@ -30,7 +36,11 @@ constexpr std::uint32_t parityMix(std::uint32_t v)
 }
 
 // Allocate a host-visible buffer, fill with a deterministic pattern, run the
-// kernel once, read back, compare against parityMix applied on the CPU.
+// given compute kernel once (set 0 / binding 0 storage-buffer contract),
+// read back, compare against parityMix applied on the CPU.
+ParityResult runParityDispatch(Device &dev, std::span<const std::uint32_t> spirv);
+
+// Convenience: the glslang-compiled kernel.
 ParityResult runParityDispatch(Device &dev);
 
 } // namespace vk
