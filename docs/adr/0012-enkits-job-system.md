@@ -30,6 +30,16 @@ includes enkiTS headers outside `src/jobs/` — the `jobs::JobSystem` facade (pi
 surface other code sees, and that boundary IS the exit strategy. Tracy zones for the task graph
 land with the Tracy pin (its own supply-chain ADR), deliberately not smuggled in here.
 
+## Validation note (2026-06-06, first TSan run)
+
+The TSan CI leg's first pass over the scheduler flagged races between caller writes after
+`parallelFor` returned and worker reads inside `fn` — enkiTS v1.11's wait path carries no
+sanitizer-visible happens-before edge from worker execution to the waiter. Resolution, and a
+facade-design principle worth keeping: **the facade owns its memory-ordering contract.**
+`parallelFor` establishes its own release/acquire edge (per-partition release counts, acquire
+check after the wait), so "returns happens-after every fn invocation" is enforced by our code
+regardless of the dependency's internals — and a future scheduler swap inherits the guarantee.
+
 ## Exit strategy
 
 The facade exposes exactly what the engine uses (currently: thread count + parallel-for).
