@@ -48,10 +48,30 @@ struct StepParams {
 // solid blocks for y in [0, 16). Pure integer math — no FP hazard.
 bool worldSolid(std::int32_t x, std::int32_t y, std::int32_t z);
 
+// Integer world-space offset for origin-rebased frames (spike 2): entity
+// positions are floats LOCAL to a frame origin; world queries translate by
+// the origin in pure integer math, so the offset can never perturb the FP
+// trajectory — only which world cells are consulted.
+//
+// PRECONDITION (review-added — int32 cell + int32 origin must not overflow):
+// |each component| <= 2^30, so that origin + any in-bound local cell index
+// (|cell| <= 2^23 + 1) stays far inside int32. Asserted at the offset entry
+// point. Contract-scale s32 origins near +-2^31 need an int64 world-index
+// path — an engine-phase decision, out of this spike's scope.
+struct WorldOffset {
+	std::int32_t x = 0, y = 0, z = 0;
+};
+
 // Advance one entity by params.dt: apply gravity + damping + speed clamp,
-// then per-axis (Y, X, Z) substepped move-and-clamp against worldSolid().
-// Sets onGround when downward motion is blocked. Positions are clamped to
-// stay well inside the float-exact integer range.
+// then per-axis (Y, X, Z) substepped move-and-clamp against worldSolid()
+// translated by `origin` (integer-only translation). Sets onGround when
+// downward motion is blocked. Positions are clamped to stay well inside the
+// float-exact integer range.
+void collisionStep(Entity &e, const StepParams &params, const WorldOffset &origin);
+
+// Zero-origin convenience — bit-identical to the original spike-3 entry
+// point (the offset adds integer zero to integer cell coordinates; no FP
+// path is affected, so the spike-3 goldens are untouched).
 void collisionStep(Entity &e, const StepParams &params);
 
 } // namespace sim

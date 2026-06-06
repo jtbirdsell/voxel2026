@@ -22,6 +22,7 @@ option(VOXEL2026_SIM_UNPINNED_CONTROL
 
 add_library(voxel2026_sim STATIC
 	collision_step.cpp
+	rebase.cpp
 	replay.cpp
 )
 target_include_directories(voxel2026_sim PUBLIC ${CMAKE_SOURCE_DIR}/src)
