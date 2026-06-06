@@ -30,15 +30,24 @@ includes enkiTS headers outside `src/jobs/` — the `jobs::JobSystem` facade (pi
 surface other code sees, and that boundary IS the exit strategy. Tracy zones for the task graph
 land with the Tracy pin (its own supply-chain ADR), deliberately not smuggled in here.
 
-## Validation note (2026-06-06, first TSan run)
+## Validation note (2026-06-06, first TSan runs — the gate earned its mandate twice)
 
-The TSan CI leg's first pass over the scheduler flagged races between caller writes after
-`parallelFor` returned and worker reads inside `fn` — enkiTS v1.11's wait path carries no
-sanitizer-visible happens-before edge from worker execution to the waiter. Resolution, and a
-facade-design principle worth keeping: **the facade owns its memory-ordering contract.**
-`parallelFor` establishes its own release/acquire edge (per-partition release counts, acquire
-check after the wait), so "returns happens-after every fn invocation" is enforced by our code
-regardless of the dependency's internals — and a future scheduler swap inherits the guarantee.
+The TSan CI leg's first passes over the scheduler found two distinct issues:
+
+1. **Missing fn-visibility edge** — caller writes after `parallelFor` returned raced worker
+   reads inside `fn`. Resolution, and a facade-design principle worth keeping: **the facade
+   owns its memory-ordering contract.** `parallelFor` establishes its own release/acquire edge
+   (per-partition release counts, acquire check after the wait), so "returns happens-after
+   every fn invocation" is enforced by our code regardless of the dependency's internals — and
+   a future scheduler swap inherits the guarantee.
+2. **Use-after-wait in v1.11 itself** — a worker's trailing atomic write to the TaskSet's own
+   completion counter (`TryRunTask`) landed after `WaitforTask` returned, racing the stack
+   task's reuse. No facade code can fix the scheduler touching its own object post-wait;
+   upstream fixed the completion memory ordering on master in June 2023 (`m_RunningCount` /
+   `WaitForTaskCompletion` to acq_rel), after the v1.11 tag. **The pin moved from the tag to a
+   master SHA (0289cf6f, 2026-06-03)** — a deliberate exception to tag-pinning, recorded here:
+   the newest tag was genuinely unsafe under the project's own blocking gate, which is exactly
+   the situation SHA pins exist for.
 
 ## Exit strategy
 

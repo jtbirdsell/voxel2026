@@ -4,10 +4,16 @@
 
 include(FetchContent)
 
+# SHA pin, deliberately ahead of the v1.11 tag: the first TSan CI pass
+# showed v1.11's wait path leaving a trailing atomic write to the TaskSet's
+# own counter after WaitforTask returned (use-after-wait on a stack task);
+# upstream fixed the completion memory ordering on master in June 2023
+# (m_RunningCount / WaitForTaskCompletion to acq_rel), post-tag. Pinned to
+# master as of 2026-06-03 — ADR-0012 records the episode.
 FetchContent_Declare(
 	enkiTS
 	GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
-	GIT_TAG        v1.11
+	GIT_TAG        0289cf6ffce86697e1f46cb4eeca1c946bffec71
 )
 set(ENKITS_BUILD_EXAMPLES OFF)
 set(ENKITS_BUILD_C_INTERFACE OFF)
