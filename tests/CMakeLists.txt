@@ -11,6 +11,7 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(voxel2026_tests
 	test_collision_step.cpp
 	test_det_math.cpp
+	test_identity.cpp
 	test_minigen.cpp
 	test_morton.cpp
 	test_rc.cpp
