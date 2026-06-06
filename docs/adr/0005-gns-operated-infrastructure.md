@@ -1,6 +1,6 @@
 # ADR-0005 — GameNetworkingSockets and the operated-infrastructure posture
 
-**Status:** Proposed
+**Status:** Accepted (2026-06-06)
 **Date:** 2026-06-05
 
 ## Context
@@ -12,7 +12,16 @@ Datagram Relay is Valve-proprietary). For player-hosted servers — this ecosyst
 session setup needs a rendezvous service, and symmetric-NAT clients need TURN relays or they
 cannot hole-punch.
 
-## Decision (proposed)
+## Validation (2026-06-06 — ratification facts, verified)
+
+- **Maintenance**: v1.5 shipped after a near-four-year tag hiatus and the repository is under
+  active development with cross-platform CI, kept in sync with the Steam codebase — the round-2
+  review's "tag cadence is not activity" verdict stands, now with a tagged release too.
+- **The infrastructure gap is unchanged**: SDR remains Valve-proprietary; GNS still ships the
+  ICE/STUN client without a signaling service or off-Steam relay — this ADR's
+  rendezvous/TURN/direct-IP posture remains the honest scope.
+
+## Decision
 
 - **Direct IP / port-forward connection remains fully supported** (as in Luanti 1.x) — no
   operated infrastructure is *required* to play.

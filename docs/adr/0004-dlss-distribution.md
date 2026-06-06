@@ -1,6 +1,6 @@
 # ADR-0004 — DLSS/Streamline distribution policy
 
-**Status:** Proposed
+**Status:** Accepted (2026-06-06)
 **Date:** 2026-06-05
 
 ## Context
@@ -13,7 +13,19 @@ application with material additional functionality**, but forbids standalone red
 any use that would subject the SDK to an open-source license. The DLSS-G (frame generation)
 plugin ships as a prebuilt closed DLL only.
 
-## Decision (proposed)
+## Validation (2026-06-06 — ratification facts, verified)
+
+- **Streamline current**: SDK 2.11.1 (released 2026-04-21), actively maintained.
+- **NVIDIA's own posture now matches this ADR's**: as of SL 2.7.32 the binary artifacts (DLSS
+  feature DLLs and Streamline DLLs) are **not in the GitHub repository** — they ship via
+  release downloads only, and DLSS-G remains prebuilt-DLL-only. The "never vendor blobs into
+  the source repo" rule is therefore aligned with upstream's distribution shape, not fighting
+  it.
+- **Signing caveat recorded**: Streamline's guidance requires production builds to load only
+  NVIDIA-signed SL DLLs (or an own-signing scheme) — the dynamic-load plugin path must verify
+  signatures, which folds into the supply-chain gate when the plugin lands.
+
+## Decision
 
 - DLSS/Streamline prebuilt blobs are **never vendored into this source repository**.
 - The plugin is **separable, dynamically loaded, off-by-default**; the engine core remains pure
