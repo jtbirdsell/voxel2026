@@ -1,8 +1,9 @@
 # Spike 2 — Streaming origin rebasing correctness
 
 **Issue:** [#2](https://github.com/jtbirdsell/voxel2026/issues/2) · **Contract:**
-[Contract 4](../contracts/contract-4-coordinates.md) · **Status:** implementation verified
-locally; CI verdict pending
+[Contract 4](../contracts/contract-4-coordinates.md) · **Status:** **PASS** (2026-06-06,
+commit `90bf276` — all 9 CI jobs green: rebased virtual-space goldens reproduced on
+MSVC/GCC/Clang × Debug/Release, ASan + TSan legs clean, negative controls diverging)
 
 ## Question
 
