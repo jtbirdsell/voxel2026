@@ -33,7 +33,10 @@ if(VOXEL2026_SANITIZE STREQUAL "address")
 		add_compile_options(/fsanitize=address /Zi)
 		add_link_options(/DEBUG)
 	else()
-		add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+		# -fno-sanitize-recover: UBSan findings abort instead of printing and
+		# continuing, so the CI leg is a blocking gate, not advisory output.
+		add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all
+			-fno-omit-frame-pointer)
 		add_link_options(-fsanitize=address,undefined)
 	endif()
 elseif(VOXEL2026_SANITIZE STREQUAL "thread")

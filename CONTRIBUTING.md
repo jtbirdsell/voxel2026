@@ -25,6 +25,8 @@ skeleton, and to any future engine code. Summary:
 ## CI gates (blocking, not advisory)
 
 - ASan + UBSan on every PR; TSan on anything touching threading or locks.
+  *Status: live — `linux-gcc-asan` and `linux-clang-tsan` jobs in build.yml run the full suite
+  with `VOXEL2026_SANITIZE=address|thread` (UBSan non-recoverable, so findings fail the build).*
 - Determinism harnesses block changes touching the shared collision step, FP flags, mapgen,
   or the job system.
 - Performance-regression benchmarks with explicit budgets fail the build on regression.

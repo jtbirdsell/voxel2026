@@ -50,6 +50,36 @@ jobs:
           echo "## ${{ matrix.toolchain }}-${{ matrix.build-type }}" >> "$GITHUB_STEP_SUMMARY"
           "$BIN" | tee -a "$GITHUB_STEP_SUMMARY"
 
+  # Sanitizer legs (issue #15): blocking gates per CONTRIBUTING.md. The TSan
+  # leg is what mechanically verifies the spike-1 parallel gather (32-thread
+  # tests) and any future threading change — TSan does not exist on MSVC.
+  sanitize:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc-asan
+            sanitize: address
+            cmake-args: "-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++"
+          - name: linux-clang-tsan
+            sanitize: thread
+            cmake-args: "-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++"
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          -DVOXEL2026_SANITIZE=${{ matrix.sanitize }} ${{ matrix.cmake-args }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
   # Determinism NEGATIVE CONTROL: same kernel, contraction-enabled build.
   # Its replay MUST diverge from the goldens (the golden test asserts
   # inequality under VOXEL2026_SIM_UNPINNED_CONTROL). If this job fails, the
