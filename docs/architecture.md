@@ -309,8 +309,11 @@ The lens where clean break pays most. Replaces mapnode.h/mapblock.h/database/\* 
   resolve path between them.
 - **LOD aggregate pyramid as a first-class persisted artifact** — *the* shared schema (renderer +
   network): sparse octree, per-node dominant-material palette + occupancy/heightfield + content
-  bounds; generated as a mapgen byproduct; edit-dirty bubbles up with content hashes for client
-  refetch; coarse levels stored, fine levels regenerable.
+  bounds (design intent for the full payload; Contract 2's v1 payload carries hash + occupancy +
+  dominant content only — heightfield/bounds land with the Phase-2 *measured* payload revision,
+  non-breaking by the contract's identity-tracks-content invariant); generated as a mapgen
+  byproduct; edit-dirty bubbles up with content hashes for client refetch; coarse levels stored,
+  fine levels regenerable.
 
 ### 4. Scripting & modding — Luau, capabilities, typed contracts
 
