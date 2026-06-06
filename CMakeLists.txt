@@ -54,6 +54,7 @@ target_include_directories(voxel2026_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/
 
 add_subdirectory(src/sim)
 add_subdirectory(src/gen)
+add_subdirectory(src/jobs)
 add_subdirectory(src/mesh)
 add_subdirectory(src/vk)
 

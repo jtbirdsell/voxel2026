@@ -89,6 +89,10 @@ struct ChunkMesh {
 	std::vector<PackedVertex> vertices; // 4 per quad
 	std::vector<std::uint32_t> indices; // 6 per quad: 0,1,2, 0,2,3
 	std::uint32_t quadCount = 0;
+
+	// Bit-exact equality — the parallel-pool determinism gate compares
+	// whole meshes (meshing is pure per chunk, so schedule cannot matter).
+	friend bool operator==(const ChunkMesh &, const ChunkMesh &) = default;
 };
 
 // Optional neighbor cell views (Morton order, kChunkEdge^3 each, or empty =

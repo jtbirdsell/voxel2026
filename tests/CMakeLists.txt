@@ -14,6 +14,7 @@ add_executable(voxel2026_tests
 	test_det_math.cpp
 	test_identity.cpp
 	test_greedy_mesh.cpp
+	test_jobs.cpp
 	test_lod_pyramid.cpp
 	test_meshexec.cpp
 	test_minigen.cpp

@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "gen/minigen.hpp"
+#include "jobs/jobs.hpp"
 #include "mesh/greedy.hpp"
+#include "mesh/parallel.hpp"
 #include "voxel/morton.hpp"
 #include "world/voxel_blob.hpp"
 
@@ -84,5 +86,33 @@ int main()
 			chunks.empty() ? 0.0
 						   : static_cast<double>(vertices * sizeof(mesh::PackedVertex)) /
 							static_cast<double>(chunks.size()));
+
+	// The migrated pool (issue #20): same chunks through the job system,
+	// median of 5 batch runs after a warm batch; speedup over serial.
+	{
+		jobs::JobSystem js;
+		(void)mesh::meshChunksParallel(chunks, opaqueNonZero, js); // warm
+		std::vector<double> serialMs, parallelMs;
+		for (int round = 0; round < 5; ++round) {
+			auto t0 = std::chrono::steady_clock::now();
+			const auto s = mesh::meshChunksSerial(chunks, opaqueNonZero);
+			auto t1 = std::chrono::steady_clock::now();
+			const auto p = mesh::meshChunksParallel(chunks, opaqueNonZero, js);
+			auto t2 = std::chrono::steady_clock::now();
+			serialMs.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+			parallelMs.push_back(std::chrono::duration<double, std::milli>(t2 - t1).count());
+			if (p != s) {
+				std::printf("parallel/serial MISMATCH — determinism gate broken\n");
+				return 1;
+			}
+		}
+		std::sort(serialMs.begin(), serialMs.end());
+		std::sort(parallelMs.begin(), parallelMs.end());
+		const double sMed = serialMs[serialMs.size() / 2];
+		const double pMed = parallelMs[parallelMs.size() / 2];
+		std::printf("pool batch (serial):  %.2f ms for %zu chunks\n", sMed, chunks.size());
+		std::printf("pool batch (jobs):    %.2f ms on %u threads (%.1fx, bit-equal)\n",
+				pMed, js.threadCount(), pMed > 0.0 ? sMed / pMed : 0.0);
+	}
 	return 0;
 }
