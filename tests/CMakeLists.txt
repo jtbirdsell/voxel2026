@@ -15,6 +15,7 @@ add_executable(voxel2026_tests
 	test_morton.cpp
 	test_rebase.cpp
 	test_replay_determinism.cpp
+	test_vct.cpp
 	test_vk.cpp
 )
 target_link_libraries(voxel2026_tests PRIVATE voxel2026_core voxel2026_gen voxel2026_sim

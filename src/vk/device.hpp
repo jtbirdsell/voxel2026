@@ -43,6 +43,7 @@ struct CapabilityReport {
 	bool timelineSemaphore = false;  // core in 1.2
 
 	float timestampPeriodNs = 0.0f;  // ns per timestamp tick (0 = unsupported)
+	std::uint32_t timestampValidBits = 0; // of the chosen compute family
 	std::uint32_t computeQueueFamily = ~0u;
 
 	std::string failureReason;       // set when available == false

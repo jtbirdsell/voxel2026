@@ -46,12 +46,19 @@ voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/parity.comp.spv
 	PARITY_SPIRV_WORDS PARITY_SPIRV_WORDS_INITIALIZER)
 voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/parity.slang.spv
 	PARITY_SLANG_SPIRV_WORDS PARITY_SLANG_SPIRV_WORDS_INITIALIZER)
+voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/vct_inject.spv
+	VCT_INJECT_SPIRV_WORDS VCT_INJECT_SPIRV_WORDS_INITIALIZER)
+voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/vct_mip.spv
+	VCT_MIP_SPIRV_WORDS VCT_MIP_SPIRV_WORDS_INITIALIZER)
+voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/vct_trace.spv
+	VCT_TRACE_SPIRV_WORDS VCT_TRACE_SPIRV_WORDS_INITIALIZER)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/spirv_embed.cpp.in
 	${CMAKE_CURRENT_BINARY_DIR}/spirv_embed.cpp @ONLY)
 
 add_library(voxel2026_vk STATIC
 	device.cpp
 	compute.cpp
+	bench.cpp
 	${CMAKE_CURRENT_BINARY_DIR}/spirv_embed.cpp
 )
 target_include_directories(voxel2026_vk PUBLIC ${CMAKE_SOURCE_DIR}/src)
@@ -59,6 +66,7 @@ target_link_libraries(voxel2026_vk
 	PUBLIC Vulkan-Headers
 	# CMAKE_DL_LIBS: dlopen/dlsym live in libdl on glibc < 2.34 (review
 	# finding — ubuntu-latest only dodges this by being 24.04); expands to
-	# nothing where unneeded.
-	PRIVATE voxel2026_warnings ${CMAKE_DL_LIBS}
+	# nothing where unneeded. voxel2026_gen: the spike-4 bench voxelizes the
+	# spike-1 minigen world as its test scene.
+	PRIVATE voxel2026_warnings voxel2026_gen ${CMAKE_DL_LIBS}
 )

@@ -11,6 +11,12 @@ extern const std::uint32_t kParitySpirv[];
 extern const std::size_t kParitySpirvWords;
 extern const std::uint32_t kParitySlangSpirv[];
 extern const std::size_t kParitySlangSpirvWords;
+extern const std::uint32_t kVctInjectSpirv[];
+extern const std::size_t kVctInjectSpirvWords;
+extern const std::uint32_t kVctMipSpirv[];
+extern const std::size_t kVctMipSpirvWords;
+extern const std::uint32_t kVctTraceSpirv[];
+extern const std::size_t kVctTraceSpirvWords;
 
 const std::uint32_t kParitySpirv[] = {
 	@PARITY_SPIRV_WORDS_INITIALIZER@
@@ -21,5 +27,20 @@ const std::uint32_t kParitySlangSpirv[] = {
 	@PARITY_SLANG_SPIRV_WORDS_INITIALIZER@
 };
 const std::size_t kParitySlangSpirvWords = @PARITY_SLANG_SPIRV_WORDS@;
+
+const std::uint32_t kVctInjectSpirv[] = {
+	@VCT_INJECT_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kVctInjectSpirvWords = @VCT_INJECT_SPIRV_WORDS@;
+
+const std::uint32_t kVctMipSpirv[] = {
+	@VCT_MIP_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kVctMipSpirvWords = @VCT_MIP_SPIRV_WORDS@;
+
+const std::uint32_t kVctTraceSpirv[] = {
+	@VCT_TRACE_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kVctTraceSpirvWords = @VCT_TRACE_SPIRV_WORDS@;
 
 } // namespace vk

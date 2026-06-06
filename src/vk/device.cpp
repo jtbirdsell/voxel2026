@@ -212,6 +212,7 @@ Device::Device()
 	for (std::uint32_t i = 0; i < qfCount; ++i) {
 		if (families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
 			m_report.computeQueueFamily = i;
+			m_report.timestampValidBits = families[i].timestampValidBits;
 			if (families[i].timestampValidBits == 0)
 				m_report.timestampPeriodNs = 0.0f;
 			break;

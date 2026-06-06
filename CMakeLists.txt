@@ -69,6 +69,10 @@ target_link_libraries(replay_hash PRIVATE voxel2026_sim voxel2026_warnings)
 add_executable(vk_probe tools/vk_probe.cpp)
 target_link_libraries(vk_probe PRIVATE voxel2026_vk voxel2026_warnings)
 
+# Spike-4 VCT cost-driver benchmark (developer hardware tool).
+add_executable(vct_bench tools/vct_bench.cpp)
+target_link_libraries(vct_bench PRIVATE voxel2026_vk voxel2026_warnings)
+
 include(CTest)
 if(BUILD_TESTING)
 	add_subdirectory(tests)
