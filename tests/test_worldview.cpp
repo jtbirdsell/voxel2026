@@ -8,6 +8,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+// GCC 13 at -O2 false-fires -Wstringop-overread on std::vector equality in
+// the REQUIRE comparisons (pixels, cells, palettes) — the documented ledger
+// entry; suppressed for THIS TEST FILE only, same as test_store.cpp.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wstringop-overread"
+#endif
+
 #include <cmath>
 #include <cstdint>
 #include <set>
