@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(voxel2026
 	VERSION 0.0.1
 	DESCRIPTION "Clean-break voxel engine architecture program"
-	LANGUAGES CXX)
+	LANGUAGES CXX C) # C: the SQLite amalgamation (src/store)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -56,6 +56,7 @@ add_subdirectory(src/sim)
 add_subdirectory(src/gen)
 add_subdirectory(src/jobs)
 add_subdirectory(src/mesh)
+add_subdirectory(src/store)
 add_subdirectory(src/vk)
 
 add_executable(voxel2026 src/main.cpp)

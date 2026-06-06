@@ -41,9 +41,12 @@
    (pinned by test).
 6. **Byte-identity guarantee** (scoped per the architecture's own review correction): the blob
    bytes are the same object CPU-side and GPU-side — the in-shader reader consumes
-   header/palette/stream directly, no per-frame transcode. Disk holds the *same layout
-   compressed at rest*: one decompress on load, canonical thereafter — identity is two ways
-   plus a defined at-rest transform, not "three ways".
+   header/palette/stream directly, no per-frame transcode. Disk holds the *same layout*; the
+   at-rest transform is persistence-layer POLICY, not blob schema: the codec election (zstd is
+   the architecture's standing answer) is deferred per ADR-0013 with a named trigger, and the
+   v1 default store writes the layout uncompressed — palette compression already does the
+   heavy lifting (a uniform 16³ chunk is 32 bytes). What this invariant freezes is layout
+   identity through any at-rest transform: one decode on load, canonical thereafter.
 7. **Full validation on every untrusted read**: magic/version/extent/width/count rules, exact
    blob size, and index-range checks (`unpackVoxelBlob` over the whole stream; `blobCellAt`
    for the cell touched) — nullopt on any violation, never partial output. Random access is
