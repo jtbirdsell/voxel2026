@@ -13,8 +13,9 @@ the right de-risked Tier-B default? Decided by **measured cost drivers on real h
 ## Method (stage 4a — VCT)
 
 Substrate (`src/vk/bench.*`): the spike-1 minigen world voxelized into a packed scene buffer,
-uploaded device-local; an RGBA8 3D radiance volume with full mip chain (per-level storage views
-+ trilinear sampled view); three Slang kernels (`vct_inject`, `vct_mip`, `vct_trace` — pinned
+uploaded device-local; an RGBA8 3D radiance volume with full mip chain (per-level storage
+views plus a trilinear sampled view); three Slang kernels (`vct_inject`, `vct_mip`,
+`vct_trace` — pinned
 per docs/tooling/slang.md) with per-pass timestamp queries.
 
 **Measurement validity (hardened by adversarial review — the first version had 3 blockers):**
