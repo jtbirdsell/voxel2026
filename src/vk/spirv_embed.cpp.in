@@ -17,6 +17,14 @@ extern const std::uint32_t kVctMipSpirv[];
 extern const std::size_t kVctMipSpirvWords;
 extern const std::uint32_t kVctTraceSpirv[];
 extern const std::size_t kVctTraceSpirvWords;
+extern const std::uint32_t kRcMarchSpirv[];
+extern const std::size_t kRcMarchSpirvWords;
+extern const std::uint32_t kRcMergeSpirv[];
+extern const std::size_t kRcMergeSpirvWords;
+extern const std::uint32_t kRcResolveSpirv[];
+extern const std::size_t kRcResolveSpirvWords;
+extern const std::uint32_t kRcSampleSpirv[];
+extern const std::size_t kRcSampleSpirvWords;
 
 const std::uint32_t kParitySpirv[] = {
 	@PARITY_SPIRV_WORDS_INITIALIZER@
@@ -42,5 +50,25 @@ const std::uint32_t kVctTraceSpirv[] = {
 	@VCT_TRACE_SPIRV_WORDS_INITIALIZER@
 };
 const std::size_t kVctTraceSpirvWords = @VCT_TRACE_SPIRV_WORDS@;
+
+const std::uint32_t kRcMarchSpirv[] = {
+	@RC_MARCH_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kRcMarchSpirvWords = @RC_MARCH_SPIRV_WORDS@;
+
+const std::uint32_t kRcMergeSpirv[] = {
+	@RC_MERGE_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kRcMergeSpirvWords = @RC_MERGE_SPIRV_WORDS@;
+
+const std::uint32_t kRcResolveSpirv[] = {
+	@RC_RESOLVE_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kRcResolveSpirvWords = @RC_RESOLVE_SPIRV_WORDS@;
+
+const std::uint32_t kRcSampleSpirv[] = {
+	@RC_SAMPLE_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kRcSampleSpirvWords = @RC_SAMPLE_SPIRV_WORDS@;
 
 } // namespace vk

@@ -13,6 +13,7 @@ add_executable(voxel2026_tests
 	test_det_math.cpp
 	test_minigen.cpp
 	test_morton.cpp
+	test_rc.cpp
 	test_rebase.cpp
 	test_replay_determinism.cpp
 	test_vct.cpp
