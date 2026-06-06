@@ -1,0 +1,23 @@
+// First-dispatch parity kernel: an integer mix every thread applies in place.
+// The CPU mirror in tests/test_vk.cpp and tools/vk_probe.cpp applies the SAME
+// formula; bit-equality of 2^20 results is the GPU/CPU parity check.
+//
+// SOURCE OF TRUTH for parity.comp.spv (committed beside it). Regenerate with:
+//   glslangValidator -V parity.comp -o parity.comp.spv
+// (Integer-only math: parity is exact, no FP tolerance games.)
+
+#version 450
+
+layout(local_size_x = 64) in;
+
+layout(std430, set = 0, binding = 0) buffer Buf {
+	uint data[];
+};
+
+void main()
+{
+	uint i = gl_GlobalInvocationID.x;
+	uint v = data[i];
+	v = (v * 0x9E3779B9u) ^ (v >> 13);
+	data[i] = v;
+}

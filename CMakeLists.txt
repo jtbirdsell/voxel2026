@@ -54,6 +54,7 @@ target_include_directories(voxel2026_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/
 
 add_subdirectory(src/sim)
 add_subdirectory(src/gen)
+add_subdirectory(src/vk)
 
 add_executable(voxel2026 src/main.cpp)
 target_link_libraries(voxel2026 PRIVATE voxel2026_core voxel2026_warnings)
@@ -62,6 +63,11 @@ target_link_libraries(voxel2026 PRIVATE voxel2026_core voxel2026_warnings)
 # goldens in tests/test_replay_determinism.cpp and to localize CI divergence.
 add_executable(replay_hash tools/replay_hash.cpp)
 target_link_libraries(replay_hash PRIVATE voxel2026_sim voxel2026_warnings)
+
+# Vulkan capability probe + first-dispatch report (developer hardware tool;
+# prints "unavailable" cleanly on driverless hosts).
+add_executable(vk_probe tools/vk_probe.cpp)
+target_link_libraries(vk_probe PRIVATE voxel2026_vk voxel2026_warnings)
 
 include(CTest)
 if(BUILD_TESTING)

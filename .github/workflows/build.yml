@@ -78,6 +78,12 @@ jobs:
         run: cmake --build build --config Release --parallel
 
       - name: Test
+        # VOXEL2026_VK_DISABLE: the Vulkan SKIP on runners must be a CONTRACT,
+        # not an accident of the image lacking libvulkan — a future image
+        # shipping lavapipe would otherwise run the Mesa ICD under
+        # ASan/TSan with no suppressions (review finding).
+        env:
+          VOXEL2026_VK_DISABLE: "1"
         run: ctest --test-dir build -C Release --output-on-failure
 
   # Determinism NEGATIVE CONTROL: same kernel, contraction-enabled build.
@@ -101,6 +107,8 @@ jobs:
         run: cmake --build build --config Release --parallel
 
       - name: Test (expects divergence)
+        env:
+          VOXEL2026_VK_DISABLE: "1" # same contract as the sanitizer legs
         run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Replay hashes (control evidence)

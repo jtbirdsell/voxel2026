@@ -1,0 +1,17 @@
+// Generated at configure time from src/vk/shaders/parity.comp.spv — do not
+// edit. The GLSL source (parity.comp) is the artifact of record.
+
+#include <cstddef>
+#include <cstdint>
+
+namespace vk {
+
+extern const std::uint32_t kParitySpirv[];
+extern const std::size_t kParitySpirvWords;
+
+const std::uint32_t kParitySpirv[] = {
+	@PARITY_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kParitySpirvWords = @PARITY_SPIRV_WORDS@;
+
+} // namespace vk
