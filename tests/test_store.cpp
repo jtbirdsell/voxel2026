@@ -7,6 +7,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+// GCC 13 at -O2 false-fires -Wstringop-overread on std::vector<std::byte>
+// equality (the memcmp specialization in stl_algobase models the size as
+// possibly negative) — the third entry in this repo's GCC-13 false-positive
+// ledger. Suppressed for THIS TEST FILE only; production store code carries
+// every warning.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wstringop-overread"
+#endif
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
