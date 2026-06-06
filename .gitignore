@@ -3,6 +3,9 @@ build*/
 out/
 cmake-build-*/
 
+# Ultrabuild process-internal state (durable knowledge lands in docs/)
+.ultrabuild/
+
 # IDE
 .vs/
 .vscode/

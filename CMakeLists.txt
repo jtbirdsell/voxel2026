@@ -18,10 +18,39 @@ else()
 	target_compile_options(voxel2026_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+# Local-only sanitizer opt-in (default OFF; CI runs without it for now — a
+# follow-up issue adds Linux ASan/UBSan/TSan CI legs). Applied GLOBALLY in a
+# dedicated build tree: MSVC's ASan container annotations are an ABI that
+# must match across every object including Catch2 (LNK2038 otherwise), and
+# whole-program instrumentation is the methodologically correct mode anyway.
+# 'address' = ASan (MSVC) / ASan+UBSan (GCC/Clang); 'thread' = TSan (GCC/Clang).
+set(VOXEL2026_SANITIZE "" CACHE STRING
+	"Sanitize the whole build: '' (off), 'address', or 'thread' (GCC/Clang only)")
+add_library(voxel2026_sanitize INTERFACE) # retained as a no-op link target
+if(VOXEL2026_SANITIZE STREQUAL "address")
+	if(MSVC)
+		# /Zi: ASan without debug info trips warning C5072, which /WX promotes.
+		add_compile_options(/fsanitize=address /Zi)
+		add_link_options(/DEBUG)
+	else()
+		add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+		add_link_options(-fsanitize=address,undefined)
+	endif()
+elseif(VOXEL2026_SANITIZE STREQUAL "thread")
+	if(MSVC)
+		message(FATAL_ERROR "TSan is not available with MSVC; use GCC/Clang")
+	endif()
+	add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+	add_link_options(-fsanitize=thread)
+elseif(NOT VOXEL2026_SANITIZE STREQUAL "")
+	message(FATAL_ERROR "VOXEL2026_SANITIZE must be '', 'address', or 'thread'")
+endif()
+
 add_library(voxel2026_core INTERFACE)
 target_include_directories(voxel2026_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_subdirectory(src/sim)
+add_subdirectory(src/gen)
 
 add_executable(voxel2026 src/main.cpp)
 target_link_libraries(voxel2026 PRIVATE voxel2026_core voxel2026_warnings)
