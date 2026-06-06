@@ -1,7 +1,10 @@
 # Spike 1 — Parallel mapgen determinism + the seam-ownership rule
 
 **Issue:** [#1](https://github.com/jtbirdsell/voxel2026/issues/1) · **Architecture:**
-Part III §3 "Mapgen" · **Status:** implementation verified locally; CI verdict pending
+Part III §3 "Mapgen" · **Status:** **PASS** (2026-06-06, commit `9cd5436`,
+[run on the full matrix](https://github.com/jtbirdsell/voxel2026/actions) — all 7 jobs green:
+identity at 1/4/32 threads + shuffled orders on MSVC/GCC/Clang × Debug/Release, golden
+reproduced cross-platform, scatter controls diverging, oracle matching on every chunk)
 
 ## Question
 
