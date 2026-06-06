@@ -25,6 +25,8 @@ extern const std::uint32_t kRcResolveSpirv[];
 extern const std::size_t kRcResolveSpirvWords;
 extern const std::uint32_t kRcSampleSpirv[];
 extern const std::size_t kRcSampleSpirvWords;
+extern const std::uint32_t kMeshexecSpirv[];
+extern const std::size_t kMeshexecSpirvWords;
 
 const std::uint32_t kParitySpirv[] = {
 	@PARITY_SPIRV_WORDS_INITIALIZER@
@@ -70,5 +72,10 @@ const std::uint32_t kRcSampleSpirv[] = {
 	@RC_SAMPLE_SPIRV_WORDS_INITIALIZER@
 };
 const std::size_t kRcSampleSpirvWords = @RC_SAMPLE_SPIRV_WORDS@;
+
+const std::uint32_t kMeshexecSpirv[] = {
+	@MESHEXEC_SPIRV_WORDS_INITIALIZER@
+};
+const std::size_t kMeshexecSpirvWords = @MESHEXEC_SPIRV_WORDS@;
 
 } // namespace vk

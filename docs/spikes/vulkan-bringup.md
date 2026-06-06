@@ -4,9 +4,14 @@
 headless compute with GPU/CPU parity and timestamps, **and the Slang toolchain slice**: the same
 kernel compiled by slangc v2026.10.2 (pin: docs/tooling/slang.md) runs bit-exact on the 4090
 beside the glslang compilation (both MATCH; Slang's SPIR-V ~19% smaller, 832 vs 1032 bytes),
-reflection JSON validated, and mesh/task/vertex/fragment stage emission **checked compile-only**
-(committed probe `.spv` artifacts; not yet executed on hardware — that transfers to the first
-real mesh kernel). ADR-0002 is **Accepted** on this evidence.
+reflection JSON validated, and mesh/task/vertex/fragment stage emission checked compile-only.
+ADR-0002 is **Accepted** on this evidence. **Update (2026-06-06, issue #16): the execution half
+landed too** — `src/vk/meshexec.*` builds a real mesh+fragment graphics pipeline
+(VK_EXT_mesh_shader enabled through a capability-gated features2 chain; instance 1.1 with a 1.0
+fallback preserving the original degradation contract; graphics queue alongside compute) and
+draws on the 4090 with **byte-exact readback** (an indexed mesh-emitted quad covering exactly
+the left half of a 64×64 target; 0 wrong bytes). ADR-0002's standing condition is met; hosts
+without the tier SKIP with the recorded blocking reason (`meshExecBlocked`), never fail.
 
 ## What exists
 

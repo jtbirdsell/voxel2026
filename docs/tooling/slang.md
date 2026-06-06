@@ -21,6 +21,9 @@ slangc parity.slang -target spirv -o parity.slang.spv -reflection-json parity.sl
 # Stage-emission probes (committed .spv as ADR-0002 evidence; not embedded):
 slangc meshprobe.slang  -target spirv -o meshprobe.spv
 slangc stageprobe.slang -target spirv -o stageprobe.spv
+
+# Mesh-pipeline EXECUTION kernel (issue #16; embedded; mesh + fragment entries):
+slangc meshexec.slang -target spirv -o meshexec.spv
 ```
 
 GLSL companion (parity.comp) uses glslang — obtained via `vcpkg install "glslang[tools]"`

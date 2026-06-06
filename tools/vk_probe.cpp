@@ -9,6 +9,7 @@
 
 #include "vk/compute.hpp"
 #include "vk/device.hpp"
+#include "vk/meshexec.hpp"
 
 namespace {
 
@@ -68,6 +69,34 @@ int main()
 		if (p.gpuMillis >= 0.0)
 			std::printf("GPU time:               %.4f ms\n", p.gpuMillis);
 		allMatch = allMatch && p.match;
+	}
+
+	// Mesh-pipeline execution (issue #16, the ADR-0002 renderer gate). A
+	// blocked tier is a valid probe answer, never a failure.
+	std::puts("--- mesh pipeline execution (ADR-0002 renderer gate) ---");
+	if (!r.meshPipelineReady) {
+		std::printf("tier blocked:           %s\n", r.meshExecBlocked.c_str());
+	} else {
+		const vk::MeshExecResult m = vk::runMeshExec(dev);
+		if (!m.ran) {
+			std::printf("mesh exec FAILED: %s\n", m.failureReason.c_str());
+			return 1;
+		}
+		std::size_t wrong = 0;
+		for (std::uint32_t y = 0; y < m.height; ++y)
+			for (std::uint32_t x = 0; x < m.width; ++x) {
+				const std::size_t at = (std::size_t{y} * m.width + x) * 4;
+				const std::uint8_t *want =
+						x < m.width / 2 ? vk::kMeshExecFill : vk::kMeshExecClear;
+				for (int c = 0; c < 4; ++c)
+					if (m.pixels[at + c] != want[c])
+						++wrong;
+			}
+		std::printf("graphics queue family:  %u\n", r.graphicsQueueFamily);
+		std::printf("target:                 %ux%u, %zu wrong bytes\n", m.width,
+				m.height, wrong);
+		std::printf("exact-pixel verdict:    %s\n", wrong == 0 ? "MATCH" : "MISMATCH");
+		allMatch = allMatch && wrong == 0;
 	}
 	return allMatch ? 0 : 1;
 }

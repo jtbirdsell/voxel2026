@@ -1,6 +1,6 @@
 # ADR-0002 — Slang as shader toolchain, with exit strategy
 
-**Status:** Accepted (2026-06-06) — with one standing condition, see Validation
+**Status:** Accepted (2026-06-06) — standing condition MET 2026-06-06, see Validation
 **Date:** 2026-06-05
 
 ## Context
@@ -44,10 +44,13 @@ Toolchain pin (release tag, asset, SHA-256, regeneration commands):
   trust a byte count.
 - **Vertex / fragment / amplification (task) emission (compile-only)**: `stageprobe.slang`
   (three entries, one module) → committed `stageprobe.spv`.
-- **Standing condition**: pipeline-level mesh/task validation (an actual mesh pipeline executing
-  on the 4090) transfers to the first real mesh-shader kernel — emission alone is accepted as
-  the toolchain gate, execution as the renderer gate. Only the compute stage has *executed* on
-  hardware so far.
+- **Standing condition — MET (2026-06-06, issue #16)**: `meshexec.slang` (mesh + fragment
+  entries, pinned slangc) **executes on the RTX 4090** as a real graphics pipeline
+  (VK_EXT_mesh_shader, graphics queue family 0): one mesh workgroup emits an indexed quad
+  covering exactly the left half of a 64×64 offscreen target, validated **byte-exactly** on
+  readback (0 wrong bytes of 16,384; `tests/test_meshexec.cpp`, SKIP-graceful on hosts without
+  the tier). Emission was the toolchain gate; this execution is the renderer gate — both now
+  hold, and the ADR carries no further conditions.
 
 ## Exit strategy
 

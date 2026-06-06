@@ -102,9 +102,14 @@ Device::Device()
 		return m_gipa(inst, name);
 	};
 
-	// ---- Instance. Core 1.0 is all this bring-up uses, so request exactly
-	// that (review finding: a 1.1 request makes 1.0-only loaders fail with
-	// VK_ERROR_INCOMPATIBLE_DRIVER for zero benefit).
+	// ---- Instance. The original bring-up requested exactly 1.0 (review
+	// finding: a 1.1 request makes 1.0-only loaders fail with
+	// VK_ERROR_INCOMPATIBLE_DRIVER for zero benefit). The mesh-execution
+	// tier (issue #16) NOW has a benefit — the features2 chain at device
+	// creation needs an instance >= 1.1 — so: try 1.1 first and fall back
+	// to 1.0 on INCOMPATIBLE_DRIVER, which preserves the old degradation
+	// contract (a 1.0-only loader still comes up, with the graphics tier
+	// reported blocked instead of the whole device failing).
 	auto vkCreateInstance_ = reinterpret_cast<PFN_vkCreateInstance>(
 			iproc(VK_NULL_HANDLE, "vkCreateInstance"));
 	if (!vkCreateInstance_) {
@@ -115,11 +120,17 @@ Device::Device()
 	VkApplicationInfo app{};
 	app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	app.pApplicationName = "voxel2026";
-	app.apiVersion = VK_API_VERSION_1_0;
+	app.apiVersion = VK_API_VERSION_1_1;
 	VkInstanceCreateInfo ici{};
 	ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	ici.pApplicationInfo = &app;
-	const VkResult instRes = vkCreateInstance_(&ici, nullptr, &m_instance);
+	std::uint32_t instanceApi = VK_API_VERSION_1_1;
+	VkResult instRes = vkCreateInstance_(&ici, nullptr, &m_instance);
+	if (instRes == VK_ERROR_INCOMPATIBLE_DRIVER) {
+		app.apiVersion = VK_API_VERSION_1_0;
+		instanceApi = VK_API_VERSION_1_0;
+		instRes = vkCreateInstance_(&ici, nullptr, &m_instance);
+	}
 	if (instRes != VK_SUCCESS) {
 		m_report.failureReason = instRes == VK_ERROR_INCOMPATIBLE_DRIVER
 				? "vkCreateInstance: incompatible driver"
@@ -222,23 +233,106 @@ Device::Device()
 		m_report.failureReason = "no compute-capable queue family";
 		return;
 	}
+	for (std::uint32_t i = 0; i < qfCount; ++i) {
+		if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+			m_report.graphicsQueueFamily = i;
+			break;
+		}
+	}
 
-	// ---- Logical device with one compute queue (core 1.0 path).
+	// ---- Mesh-execution tier preconditions (issue #16). Each failed gate
+	// records WHY, so the graphics tests can SKIP with a reason instead of
+	// failing on hosts that legitimately lack the tier.
+	bool wantMesh = false;
+	if (instanceApi < VK_API_VERSION_1_1) {
+		m_report.meshExecBlocked = "instance API < 1.1 (no features2 chain)";
+	} else if (chosenProps.apiVersion < VK_MAKE_API_VERSION(0, 1, 2, 0)) {
+		m_report.meshExecBlocked = "device API < 1.2 (no SPIR-V 1.4)";
+	} else if (!m_report.meshShader) {
+		m_report.meshExecBlocked = "VK_EXT_mesh_shader not present";
+	} else if (m_report.graphicsQueueFamily == ~0u) {
+		m_report.meshExecBlocked = "no graphics-capable queue family";
+	} else {
+		// Extension present: confirm the FEATURE bit (presence is necessary,
+		// not sufficient) through the features2 chain.
+		auto vkGetPhysicalDeviceFeatures2_ =
+				reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(
+						iproc(m_instance, "vkGetPhysicalDeviceFeatures2"));
+		if (!vkGetPhysicalDeviceFeatures2_) {
+			m_report.meshExecBlocked = "vkGetPhysicalDeviceFeatures2 not resolvable";
+		} else {
+			VkPhysicalDeviceMeshShaderFeaturesEXT meshFeat{};
+			meshFeat.sType =
+					VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
+			VkPhysicalDeviceFeatures2 feat2{};
+			feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+			feat2.pNext = &meshFeat;
+			vkGetPhysicalDeviceFeatures2_(m_physical, &feat2);
+			if (!meshFeat.meshShader)
+				m_report.meshExecBlocked = "meshShader feature not supported";
+			else
+				wantMesh = true;
+		}
+	}
+
+	// ---- Logical device: one compute queue, plus the graphics queue and
+	// VK_EXT_mesh_shader when the tier preconditions hold. If the
+	// mesh-enabled creation fails, fall back to the plain compute-only
+	// device — the compute path must never regress because a graphics tier
+	// was attempted (degradation contract).
 	const float priority = 1.0f;
-	VkDeviceQueueCreateInfo qci{};
-	qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	qci.queueFamilyIndex = m_report.computeQueueFamily;
-	qci.queueCount = 1;
-	qci.pQueuePriorities = &priority;
+	VkDeviceQueueCreateInfo qcis[2] = {};
+	qcis[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+	qcis[0].queueFamilyIndex = m_report.computeQueueFamily;
+	qcis[0].queueCount = 1;
+	qcis[0].pQueuePriorities = &priority;
+	std::uint32_t queueInfoCount = 1;
+	if (wantMesh && m_report.graphicsQueueFamily != m_report.computeQueueFamily) {
+		qcis[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		qcis[1].queueFamilyIndex = m_report.graphicsQueueFamily;
+		qcis[1].queueCount = 1;
+		qcis[1].pQueuePriorities = &priority;
+		queueInfoCount = 2;
+	}
+
 	VkDeviceCreateInfo dci{};
 	dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	dci.queueCreateInfoCount = 1;
-	dci.pQueueCreateInfos = &qci;
-	if (vkCreateDevice_(m_physical, &dci, nullptr, &m_device) != VK_SUCCESS) {
-		m_report.failureReason = "vkCreateDevice failed";
-		return;
+	dci.queueCreateInfoCount = queueInfoCount;
+	dci.pQueueCreateInfos = qcis;
+
+	if (wantMesh) {
+		// Request exactly the feature this tier uses (meshShader; no task
+		// stage yet — ADR-0002's condition is mesh-stage execution).
+		VkPhysicalDeviceMeshShaderFeaturesEXT meshEnable{};
+		meshEnable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
+		meshEnable.meshShader = VK_TRUE;
+		VkPhysicalDeviceFeatures2 feat2{};
+		feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+		feat2.pNext = &meshEnable;
+		const char *meshExt = "VK_EXT_mesh_shader";
+		VkDeviceCreateInfo meshDci = dci;
+		meshDci.pNext = &feat2;
+		meshDci.enabledExtensionCount = 1;
+		meshDci.ppEnabledExtensionNames = &meshExt;
+		if (vkCreateDevice_(m_physical, &meshDci, nullptr, &m_device) == VK_SUCCESS) {
+			m_report.meshPipelineReady = true;
+		} else {
+			m_device = VK_NULL_HANDLE; // fall back to the plain device below
+			m_report.meshExecBlocked = "mesh-enabled vkCreateDevice failed";
+		}
+	}
+	if (m_device == VK_NULL_HANDLE) {
+		dci.queueCreateInfoCount = 1; // plain path: compute queue only
+		if (vkCreateDevice_(m_physical, &dci, nullptr, &m_device) != VK_SUCCESS) {
+			m_report.failureReason = "vkCreateDevice failed";
+			return;
+		}
 	}
 	vkGetDeviceQueue_(m_device, m_report.computeQueueFamily, 0, &m_queue);
+	// Queue index 0 in either case: same-family shares the one created
+	// queue; a distinct graphics family had exactly one queue created too.
+	if (m_report.meshPipelineReady)
+		vkGetDeviceQueue_(m_device, m_report.graphicsQueueFamily, 0, &m_graphicsQueue);
 
 	m_report.available = true;
 }

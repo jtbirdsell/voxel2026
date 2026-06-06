@@ -46,6 +46,16 @@ struct CapabilityReport {
 	std::uint32_t timestampValidBits = 0; // of the chosen compute family
 	std::uint32_t computeQueueFamily = ~0u;
 
+	// Graphics tier (issue #16 / ADR-0002 standing condition): set when the
+	// logical device came up with a graphics queue AND VK_EXT_mesh_shader
+	// enabled (instance >= 1.1 for the features2 chain, device API >= 1.2
+	// for SPIR-V 1.4, extension present, meshShader feature supported).
+	// When false, meshExecBlocked says which precondition failed — graphics
+	// work SKIPs with a reason, never errors.
+	std::uint32_t graphicsQueueFamily = ~0u;
+	bool meshPipelineReady = false;
+	std::string meshExecBlocked;
+
 	std::string failureReason;       // set when available == false
 };
 
@@ -71,6 +81,10 @@ public:
 	VkQueue computeQueue() const { return m_queue; }
 	std::uint32_t computeQueueFamily() const { return m_report.computeQueueFamily; }
 
+	// Graphics tier: null/-~0u unless report().meshPipelineReady.
+	VkQueue graphicsQueue() const { return m_graphicsQueue; }
+	std::uint32_t graphicsQueueFamily() const { return m_report.graphicsQueueFamily; }
+
 	// Device-level function loading (the loader exposes only what bring-up
 	// and the compute path need; extend as the program grows).
 	PFN_vkVoidFunction deviceProc(const char *name) const;
@@ -85,6 +99,7 @@ private:
 	VkPhysicalDevice m_physical = VK_NULL_HANDLE;
 	VkDevice m_device = VK_NULL_HANDLE;
 	VkQueue m_queue = VK_NULL_HANDLE;
+	VkQueue m_graphicsQueue = VK_NULL_HANDLE;
 };
 
 } // namespace vk

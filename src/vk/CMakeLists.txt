@@ -60,6 +60,8 @@ voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/rc_resolve.spv
 	RC_RESOLVE_SPIRV_WORDS RC_RESOLVE_SPIRV_WORDS_INITIALIZER)
 voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/rc_sample.spv
 	RC_SAMPLE_SPIRV_WORDS RC_SAMPLE_SPIRV_WORDS_INITIALIZER)
+voxel2026_embed_spirv(${CMAKE_CURRENT_SOURCE_DIR}/shaders/meshexec.spv
+	MESHEXEC_SPIRV_WORDS MESHEXEC_SPIRV_WORDS_INITIALIZER)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/spirv_embed.cpp.in
 	${CMAKE_CURRENT_BINARY_DIR}/spirv_embed.cpp @ONLY)
 
@@ -67,6 +69,7 @@ add_library(voxel2026_vk STATIC
 	device.cpp
 	compute.cpp
 	bench.cpp
+	meshexec.cpp
 	${CMAKE_CURRENT_BINARY_DIR}/spirv_embed.cpp
 )
 target_include_directories(voxel2026_vk PUBLIC ${CMAKE_SOURCE_DIR}/src)
