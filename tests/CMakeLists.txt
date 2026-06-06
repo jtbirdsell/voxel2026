@@ -8,8 +8,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-add_executable(voxel2026_tests test_morton.cpp)
-target_link_libraries(voxel2026_tests PRIVATE voxel2026_core voxel2026_warnings Catch2::Catch2WithMain)
+add_executable(voxel2026_tests
+	test_collision_step.cpp
+	test_det_math.cpp
+	test_morton.cpp
+	test_replay_determinism.cpp
+)
+target_link_libraries(voxel2026_tests PRIVATE voxel2026_core voxel2026_sim voxel2026_warnings Catch2::Catch2WithMain)
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)

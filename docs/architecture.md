@@ -226,8 +226,11 @@ glTF-first (tiniergltf + meshoptimizer), GUI → new widget tree (§6), math →
   across two binaries still diverges via FMA contraction, autovectorized reduction order, and
   libm differences). The determinism mechanism is pinned: the shared step builds in its own TU
   with `-ffp-contract=off`, no fast-math, no autovectorized reductions, and a vendored
-  deterministic implementation of the few libm calls it makes (`truncf` et al.). The cross-build
-  prediction-replay harness is a **blocking CI gate** (Part VII), not an aspiration. **Jolt**
+  deterministic implementation of the few libm calls it makes (`truncf` et al.) — **plus pinned
+  FTZ/DAZ (MXCSR/FPCR) on simulation threads, which is runtime state no compile flag controls
+  (spike-3 finding)**. The cross-build prediction-replay harness is a **blocking CI gate**
+  (Part VII) with a contraction-enabled negative control that must diverge — keeping the
+  mechanism testably load-bearing, not decorative. **Jolt**
   integrated as an opt-in backend for non-predicted dynamics only (projectiles with CCD, vehicles,
   ragdolls); predicted player movement stays on the deterministic shared AABB path. Jolt never
   touches authority.

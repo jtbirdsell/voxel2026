@@ -7,29 +7,75 @@ on:
 
 jobs:
   build-test:
-    name: ${{ matrix.name }}
+    # Debug AND Release per toolchain: the Contract 5 determinism experiment
+    # requires bit-identical replay hashes across optimization levels, not
+    # just across compilers (docs/spikes/spike-3-fp-determinism.md).
+    name: ${{ matrix.toolchain }}-${{ matrix.build-type }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        build-type: [Debug, Release]
+        toolchain: [windows-msvc, linux-gcc, linux-clang]
         include:
-          - name: windows-msvc
+          - toolchain: windows-msvc
             os: windows-latest
             cmake-args: ""
-          - name: linux-gcc
+          - toolchain: linux-gcc
             os: ubuntu-latest
             cmake-args: "-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++"
-          - name: linux-clang
+          - toolchain: linux-clang
             os: ubuntu-latest
             cmake-args: "-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++"
     steps:
       - uses: actions/checkout@v5
 
+      # Build-type plumbing is generator-dependent and load-bearing for the
+      # Debug/Release determinism legs: -DCMAKE_BUILD_TYPE drives Linux
+      # (single-config Makefiles) and is ignored by the Windows VS generator,
+      # where --config/-C below are what select the configuration. Keep BOTH.
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} ${{ matrix.cmake-args }}
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build-type }} --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C ${{ matrix.build-type }} --output-on-failure
+
+      - name: Replay hashes (determinism evidence)
+        shell: bash
+        run: |
+          BIN=$(find build -name 'replay_hash*' -type f \( -name '*.exe' -o ! -name '*.*' \) | head -n1)
+          echo "## ${{ matrix.toolchain }}-${{ matrix.build-type }}" >> "$GITHUB_STEP_SUMMARY"
+          "$BIN" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Determinism NEGATIVE CONTROL: same kernel, contraction-enabled build.
+  # Its replay MUST diverge from the goldens (the golden test asserts
+  # inequality under VOXEL2026_SIM_UNPINNED_CONTROL). If this job fails, the
+  # pinned matrix's green results have no evidential power — investigate
+  # before trusting them. See docs/spikes/spike-3-fp-determinism.md.
+  determinism-control:
+    name: linux-gcc-unpinned-control
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure (contraction ON)
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          -DVOXEL2026_SIM_UNPINNED_CONTROL=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Test
+      - name: Test (expects divergence)
         run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Replay hashes (control evidence)
+        shell: bash
+        run: |
+          BIN=$(find build -name 'replay_hash*' -type f \( -name '*.exe' -o ! -name '*.*' \) | head -n1)
+          echo "## unpinned control (MUST differ from goldens)" >> "$GITHUB_STEP_SUMMARY"
+          "$BIN" | tee -a "$GITHUB_STEP_SUMMARY"

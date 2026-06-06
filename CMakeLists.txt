@@ -21,8 +21,15 @@ endif()
 add_library(voxel2026_core INTERFACE)
 target_include_directories(voxel2026_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_subdirectory(src/sim)
+
 add_executable(voxel2026 src/main.cpp)
 target_link_libraries(voxel2026 PRIVATE voxel2026_core voxel2026_warnings)
+
+# Prints the Contract 5 replay checkpoint hashes; used to mint/regenerate the
+# goldens in tests/test_replay_determinism.cpp and to localize CI divergence.
+add_executable(replay_hash tools/replay_hash.cpp)
+target_link_libraries(replay_hash PRIVATE voxel2026_sim voxel2026_warnings)
 
 include(CTest)
 if(BUILD_TESTING)
