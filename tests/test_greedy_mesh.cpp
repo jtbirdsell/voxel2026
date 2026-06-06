@@ -136,9 +136,11 @@ TEST_CASE("greedy mesher: empty and degenerate inputs")
 	REQUIRE(mesh::naiveMesh(chunk, none, opaqueNonZero).quadCount == 0);
 
 	// Wrong extent: documented precondition, empty mesh (never UB).
+	// (assign, not a one-element initializer list: GCC 13's -Warray-bounds
+	// false-fires on the init-list vector copy under -O2 + -Werror.)
 	world::UnpackedChunk tiny;
 	tiny.log2Extent = 1;
-	tiny.palette = {world::CellValue{}};
+	tiny.palette.assign(1, world::CellValue{});
 	tiny.cells.assign(8, world::CellValue{});
 	REQUIRE(mesh::greedyMesh(tiny, none, opaqueNonZero).quadCount == 0);
 }
