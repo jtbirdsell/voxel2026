@@ -9,7 +9,7 @@ jobs:
   markdownlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: DavidAnson/markdownlint-cli2-action@v18
         with:
           globs: |
@@ -20,7 +20,7 @@ jobs:
   links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Offline mode: validates relative/internal links only, so CI never
       # goes red on third-party site flakiness.
       - uses: lycheeverse/lychee-action@v2
