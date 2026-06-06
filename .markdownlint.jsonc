@@ -1,0 +1,9 @@
+{
+  // Architecture prose has long lines, tables, and inline HTML by design.
+  "default": true,
+  "MD013": false, // line length
+  "MD033": false, // inline HTML
+  "MD036": false, // emphasis as heading (used for callouts)
+  "MD024": { "siblings_only": true }, // duplicate headings allowed across sections
+  "MD041": false // first line need not be a top-level heading (badges)
+}

@@ -1,0 +1,29 @@
+name: docs
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  markdownlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v18
+        with:
+          globs: |
+            README.md
+            CONTRIBUTING.md
+            docs/**/*.md
+
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Offline mode: validates relative/internal links only, so CI never
+      # goes red on third-party site flakiness.
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --include-fragments README.md CONTRIBUTING.md docs/
+          fail: true

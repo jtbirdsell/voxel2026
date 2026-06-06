@@ -1,0 +1,14 @@
+# Frozen cross-cutting contracts
+
+The six interfaces that must be agreed before parallel implementation could start
+(architecture.md Part IV). Each contract is owned by one pillar, consumed by others, and changes
+only by RFC once frozen.
+
+| # | Contract | Owner | Consumers | Status |
+|---|----------|-------|-----------|--------|
+| 1 | [Packed voxel blob layout](contract-1-voxel-blob.md) | World data | Renderer, scripting buffers, persistence | Draft |
+| 2 | [LOD aggregate pyramid schema](contract-2-lod-pyramid.md) | World data | Renderer, networking, persistence | Draft |
+| 3 | [Identity](contract-3-identity.md) | World data | Networking, scripting, persistence | Draft |
+| 4 | [Coordinates & origin rebasing](contract-4-coordinates.md) | Runtime | Everything | Draft |
+| 5 | [Shared collision step](contract-5-collision-step.md) | Runtime | Networking (prediction), scripting | Draft |
+| 6 | [Capability taxonomy](contract-6-capabilities.md) | Scripting | UI, audio (voice), networking | Draft |
