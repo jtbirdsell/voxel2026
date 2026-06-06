@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <map>
 #include <vector>
 
@@ -59,8 +60,12 @@ public:
 		const auto &map = m_spaces[index(space)];
 		for (auto it = map.lower_bound(toVec(prefix)); it != map.end(); ++it) {
 			const std::vector<std::byte> &k = it->first;
+			// Explicit memcmp with the checked size (GCC 13's
+			// -Wstringop-overread false-fires on the 3-arg std::equal here,
+			// modeling the span-derived bound as possibly negative).
 			if (k.size() < prefix.size() ||
-					!std::equal(prefix.begin(), prefix.end(), k.begin()))
+					(!prefix.empty() &&
+							std::memcmp(k.data(), prefix.data(), prefix.size()) != 0))
 				break; // past the prefix range (keys are ordered)
 			if (!visit(k, it->second))
 				return;
