@@ -54,6 +54,7 @@ target_include_directories(voxel2026_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/
 
 add_subdirectory(src/sim)
 add_subdirectory(src/gen)
+add_subdirectory(src/mesh)
 add_subdirectory(src/vk)
 
 add_executable(voxel2026 src/main.cpp)
@@ -72,6 +73,10 @@ target_link_libraries(vk_probe PRIVATE voxel2026_vk voxel2026_warnings)
 # Spike-4 VCT cost-driver benchmark (developer hardware tool).
 add_executable(vct_bench tools/vct_bench.cpp)
 target_link_libraries(vct_bench PRIVATE voxel2026_vk voxel2026_warnings)
+
+# Greedy-mesher perf probe (issue #17; Part VII mesh-time budget baseline).
+add_executable(mesh_bench tools/mesh_bench.cpp)
+target_link_libraries(mesh_bench PRIVATE voxel2026_gen voxel2026_mesh voxel2026_warnings)
 
 include(CTest)
 if(BUILD_TESTING)

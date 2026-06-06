@@ -157,9 +157,11 @@ glTF-first (tiniergltf + meshoptimizer), GUI → new widget tree (§6), math →
   same packed chunk data — the 4090 runs this by default.
 - **Meshing: greedy meshing + packed vertices** (~8–12 bytes: u16³ chunk-relative position,
   3-bit face normal, packed light/AO, tile index) replacing 38-byte S3DVertex and naive per-node
-  faces. Special drawtypes (liquids, plants, nodeboxes) keep a non-greedy path. Workers write
-  into staging rings; **uploads go through a dedicated Vulkan transfer queue** (no
-  shared-GL-context hacks — that idea is dead with GL).
+  faces. (Phase-1 status: the greedy mesher + 8-byte position/face/slot vertex landed with issue
+  #17, oracle-verified; light/AO bits and the tile-index mapping occupy reserved spare bits and
+  land with Tier-A lighting in Phase 2.) Special drawtypes (liquids, plants, nodeboxes) keep a
+  non-greedy path. Workers write into staging rings; **uploads go through a dedicated Vulkan
+  transfer queue** (no shared-GL-context hacks — that idea is dead with GL).
 - **Far-terrain LOD**: octree/clipmap renderer consuming the **persisted LOD aggregate pyramid**
   (§3 — single schema shared with network streaming). Near rings full detail, far rings
   downsampled aggregate meshes/ray-march impostors. Target: horizon-scale view distances
