@@ -45,6 +45,19 @@ build — including the **RFC 9562 appendix A.6 golden vector** and the EnTT bit
 Generation-bump policy and entropy sourcing are engine code (Phase 1), deliberately outside the
 schema: the contract freezes *layouts*, not *allocation policy*.
 
+## Policy notes (engine implementation, recorded here for cross-reference)
+
+The allocation policy lives in `src/world/registry.hpp` (issue #18), outside this freeze, with
+two properties worth naming against the schema:
+
+- **Revival:** re-registering a tombstoned name revives the SAME id (bindings are permanent by
+  invariant 1; the tombstone is an active flag) — removing and re-adding a mod brings its world
+  content back, the 1.x name-id-map semantics worlds rely on.
+- **Generation wrap (ABA bound):** the u32 generation wraps after 2^32 release cycles *of one
+  slot*; a handle from 2^32 incarnations ago could then read as live. At one reuse per second of
+  a single slot that is ~136 years; the bump-on-release policy keeps the collision window to the
+  exact wrapped generation, not a range. Accepted and documented, not silent.
+
 ## Decisions (previously open, resolved at freeze)
 
 - **Registry compaction/GC:** rejected for v1 — append-only with tombstones stands. The u32
