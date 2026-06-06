@@ -159,7 +159,10 @@ struct Resources {
 	VkDeviceMemory statsMem = VK_NULL_HANDLE;
 	VkImage radiance = VK_NULL_HANDLE;        // device-local, full mip chain
 	VkDeviceMemory radianceMem = VK_NULL_HANDLE;
-	std::vector<VkImageView> levelViews;      // per-mip storage views
+	// Explicit default initializer: without it, GCC/Clang fire
+	// -Wmissing-field-initializers (-Werror) on the two-member aggregate
+	// init `Resources r{fn, device}` even though value-init is correct.
+	std::vector<VkImageView> levelViews{};    // per-mip storage views
 	VkImageView fullView = VK_NULL_HANDLE;    // sampled, all mips
 	VkSampler sampler = VK_NULL_HANDLE;
 	VkShaderModule modInject = VK_NULL_HANDLE, modMip = VK_NULL_HANDLE,
