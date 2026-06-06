@@ -10,10 +10,12 @@
 // Q/E down/up, ESC quit. --frames N exits after N frames (automation);
 // --db PATH persists the world between runs (default: in-memory).
 //
-// v1 is a correctness demo: the renderer does full per-frame setup, and
-// presentation is host-synchronized (fence-based acquire, render fully
-// fence-waited before present) — frame pacing/reuse are the perf issue's
-// scope, deliberately not this one's.
+// Issue #22 upgraded the loop to the persistent WorldRenderer: created-once
+// pipeline/depth/geometry (device-local, staged upload), reused command
+// slots, semaphore-paced acquire/render/present, GPU time from timestamp
+// queries. The old v1 host-serial path survives as the one-shot
+// renderWorldView* functions (the CI-validated reference the equivalence
+// gate compares against).
 
 #if !defined(_WIN32)
 #include <cstdio>
@@ -43,6 +45,7 @@ int main()
 #include "mesh/parallel.hpp"
 #include "store/sqlite_store.hpp"
 #include "vk/device.hpp"
+#include "vk/worldrenderer.hpp"
 #include "vk/worldview.hpp"
 #include "world/belt.hpp"
 
@@ -164,10 +167,9 @@ int main(int argc, char **argv)
 	LOAD_D(vkDestroySwapchainKHR);
 	LOAD_D(vkCreateImageView);
 	LOAD_D(vkDestroyImageView);
-	LOAD_D(vkCreateFence);
-	LOAD_D(vkWaitForFences);
-	LOAD_D(vkResetFences);
-	LOAD_D(vkDestroyFence);
+	LOAD_D(vkCreateSemaphore);
+	LOAD_D(vkDestroySemaphore);
+	LOAD_D(vkQueueWaitIdle);
 #undef LOAD_I
 #undef LOAD_D
 	if (!vkCreateWin32SurfaceKHR_ || !vkGetPhysicalDeviceSurfaceSupportKHR_ ||
@@ -175,8 +177,8 @@ int main(int argc, char **argv)
 			!vkGetPhysicalDeviceSurfaceFormatsKHR_ || !vkDestroySurfaceKHR_ ||
 			!vkCreateSwapchainKHR_ || !vkGetSwapchainImagesKHR_ ||
 			!vkAcquireNextImageKHR_ || !vkQueuePresentKHR_ || !vkDestroySwapchainKHR_ ||
-			!vkCreateImageView_ || !vkDestroyImageView_ || !vkCreateFence_ ||
-			!vkWaitForFences_ || !vkResetFences_ || !vkDestroyFence_) {
+			!vkCreateImageView_ || !vkDestroyImageView_ || !vkCreateSemaphore_ ||
+			!vkDestroySemaphore_ || !vkQueueWaitIdle_) {
 		std::puts("surface/swapchain entry points not resolvable");
 		return 1;
 	}
@@ -259,10 +261,29 @@ int main(int argc, char **argv)
 		vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 		vkCreateImageView_(dev.device(), &vci, nullptr, &views[i]);
 	}
-	VkFence acquireFence = VK_NULL_HANDLE;
-	VkFenceCreateInfo fci{};
-	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	vkCreateFence_(dev.device(), &fci, nullptr, &acquireFence);
+	// Pacing (issue #22): per-slot acquire semaphores (lockstep with the
+	// renderer's internal command slots) + per-image render-finished
+	// semaphores; the renderer's slot fences cap frames in flight.
+	VkSemaphore imageAvailable[vk::WorldRenderer::kFramesInFlight] = {};
+	std::vector<VkSemaphore> renderFinished(imageCount, VK_NULL_HANDLE);
+	{
+		VkSemaphoreCreateInfo semci{};
+		semci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+		for (auto &s : imageAvailable)
+			vkCreateSemaphore_(dev.device(), &semci, nullptr, &s);
+		for (auto &s : renderFinished)
+			vkCreateSemaphore_(dev.device(), &semci, nullptr, &s);
+	}
+
+	vk::WorldRenderer renderer(dev, chosen.format, extent.width, extent.height);
+	if (!renderer.ok()) {
+		std::printf("renderer init failed: %s\n", renderer.error().c_str());
+		return 1;
+	}
+	if (!renderer.uploadScene(draws)) {
+		std::printf("scene upload failed: %s\n", renderer.error().c_str());
+		return 1;
+	}
 
 	// ---- Free-fly loop.
 	vk::WorldCamera cam;
@@ -327,27 +348,29 @@ int main(int argc, char **argv)
 			cam.eye.y += moveSpeed;
 		cam.target = {cam.eye.x + fwd.x, cam.eye.y + fwd.y, cam.eye.z + fwd.z};
 
-		// Acquire (fence-synchronized), render (fully fence-waited inside),
-		// present — host-serial v1 presentation.
+		// Paced presentation (issue #22): semaphore-chained acquire ->
+		// render -> present; the renderer's internal slot fences bound the
+		// frames in flight.
+		const std::uint32_t slot = static_cast<std::uint32_t>(
+				frames % vk::WorldRenderer::kFramesInFlight);
 		std::uint32_t imageIndex = 0;
-		vkResetFences_(dev.device(), 1, &acquireFence);
 		const VkResult acq = vkAcquireNextImageKHR_(dev.device(), swapchain, ~0ull,
-				VK_NULL_HANDLE, acquireFence, &imageIndex);
+				imageAvailable[slot], VK_NULL_HANDLE, &imageIndex);
 		if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR)
 			break;
-		vkWaitForFences_(dev.device(), 1, &acquireFence, VK_TRUE, ~0ull);
 
-		std::uint64_t drawn = 0;
 		std::string err;
-		if (!vk::renderWorldViewInto(dev, draws, cam, views[imageIndex],
-					chosen.format, extent.width, extent.height,
-					VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, drawn, err)) {
+		if (!renderer.renderFrameAsync(cam, views[imageIndex], imageAvailable[slot],
+					VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+					renderFinished[imageIndex], err)) {
 			std::printf("render failed: %s\n", err.c_str());
 			break;
 		}
 
 		VkPresentInfoKHR present{};
 		present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		present.waitSemaphoreCount = 1;
+		present.pWaitSemaphores = &renderFinished[imageIndex];
 		present.swapchainCount = 1;
 		present.pSwapchains = &swapchain;
 		present.pImageIndices = &imageIndex;
@@ -360,15 +383,25 @@ int main(int argc, char **argv)
 		++frames;
 	}
 
-	// Honesty note: this is APPLICATION frame time (input + full per-frame
-	// renderer setup + GPU + present, host-serialized) — not GPU render
-	// cost. Timestamp-query instrumentation belongs to the perf issue.
+	// Two numbers, named for what they are: the GPU SPAN from timestamp
+	// queries (TOP..BOTTOM of the submission — in the semaphore-paced loop
+	// it can include in-queue waits; the offscreen test path measures pure
+	// spans), and loop time (FIFO-capped at the display refresh: pacing,
+	// not cost).
 	if (frames > 0)
-		std::printf("frames: %llu, mean application frame %.1f ms (host-serial v1)\n",
-				static_cast<unsigned long long>(frames), frameMsAccum / double(frames));
+		std::printf("frames: %llu | GPU span %.2f ms (timestamped) | loop %.1f ms "
+					"(FIFO-paced)\n",
+				static_cast<unsigned long long>(frames), renderer.lastGpuMillis(),
+				frameMsAccum / double(frames));
 
-	// Teardown (queue idle is implied: every frame is fence-waited to completion).
-	vkDestroyFence_(dev.device(), acquireFence, nullptr);
+	// Teardown: drain the queue (in-flight frames + presents), then destroy.
+	vkQueueWaitIdle_(dev.graphicsQueue());
+	for (VkSemaphore s : imageAvailable)
+		if (s)
+			vkDestroySemaphore_(dev.device(), s, nullptr);
+	for (VkSemaphore s : renderFinished)
+		if (s)
+			vkDestroySemaphore_(dev.device(), s, nullptr);
 	for (VkImageView v : views)
 		if (v)
 			vkDestroyImageView_(dev.device(), v, nullptr);

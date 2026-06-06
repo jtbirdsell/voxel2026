@@ -73,6 +73,7 @@ add_library(voxel2026_vk STATIC
 	bench.cpp
 	meshexec.cpp
 	worldview.cpp
+	worldrenderer.cpp
 	${CMAKE_CURRENT_BINARY_DIR}/spirv_embed.cpp
 )
 target_include_directories(voxel2026_vk PUBLIC ${CMAKE_SOURCE_DIR}/src)
