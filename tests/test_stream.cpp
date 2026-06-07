@@ -19,6 +19,16 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+// GCC 13 at -O2 false-fires -Wstringop-overread on the vector equalities
+// inside ChunkMesh/mesh-map REQUIREs (the memcmp specialization in
+// stl_algobase models the size as possibly negative) — the third entry in
+// this repo's GCC-13 false-positive ledger, same suppression as
+// test_store.cpp. THIS TEST FILE only; production streaming code carries
+// every warning.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wstringop-overread"
+#endif
+
 #include <cstdint>
 #include <map>
 #include <vector>
