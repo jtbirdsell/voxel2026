@@ -25,6 +25,7 @@ add_executable(voxel2026_tests
 	test_registry.cpp
 	test_replay_determinism.cpp
 	test_store.cpp
+	test_stream.cpp
 	test_vct.cpp
 	test_vk.cpp
 	test_voxel_blob.cpp

@@ -143,6 +143,15 @@ TEST_CASE("greedy mesher: empty and degenerate inputs")
 	tiny.palette.assign(1, world::CellValue{});
 	tiny.cells.assign(8, world::CellValue{});
 	REQUIRE(mesh::greedyMesh(tiny, none, opaqueNonZero).quadCount == 0);
+
+	// Empty palette with populated cells: malformed input -> empty mesh.
+	// Pins the issue-#24 fix — the slot-resolution probe used to read
+	// palette[0] before any bounds check could reject this (UB/SEGV).
+	world::UnpackedChunk cellsOnly;
+	cellsOnly.log2Extent = 4;
+	cellsOnly.cells.assign(4096, world::CellValue{1, 0});
+	REQUIRE(mesh::greedyMesh(cellsOnly, none, opaqueNonZero).quadCount == 0);
+	REQUIRE(mesh::naiveMesh(cellsOnly, none, opaqueNonZero).quadCount == 0);
 }
 
 TEST_CASE("greedy mesher: a full solid chunk collapses to exactly 6 quads")

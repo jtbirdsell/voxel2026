@@ -34,6 +34,12 @@ bool buildGrid(const world::UnpackedChunk &chunk, OpaquePredicate isOpaque, Grid
 	if (chunk.log2Extent != 4 ||
 			chunk.cells.size() != static_cast<std::size_t>(kEdge) * kEdge * kEdge)
 		return false;
+	// An empty palette with non-empty cells is malformed input too — and the
+	// `palette[last]` probe below would read it before the fallback scan's
+	// bounds check could say so (latent UB caught by the issue-#24 streaming
+	// oracle handing the mesher a cells-only chunk).
+	if (chunk.palette.empty())
+		return false;
 	out.slotOpaque.resize(chunk.palette.size());
 	for (std::size_t s = 0; s < chunk.palette.size(); ++s)
 		out.slotOpaque[s] = isOpaque(chunk.palette[s]);
