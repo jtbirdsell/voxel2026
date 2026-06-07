@@ -193,6 +193,10 @@ constexpr std::array<std::uint64_t, kWalkCheckpoints> kWalkGolden = {
 	0x1628D6F0564E8E11ull, // checkpoint 7 (step 4096)
 };
 
+// Only the pinned golden test prints this; the control build compiles the
+// whole suite with that test #if'd out, so the helper must share the guard
+// or GCC's -Werror=unused-function fails the control leg.
+#if !defined(VOXEL2026_SIM_UNPINNED_CONTROL)
 std::string pasteBlock(const std::array<std::uint64_t, kWalkCheckpoints> &cps)
 {
 	std::string out;
@@ -206,6 +210,7 @@ std::string pasteBlock(const std::array<std::uint64_t, kWalkCheckpoints> &cps)
 	}
 	return out;
 }
+#endif
 
 } // namespace
 
