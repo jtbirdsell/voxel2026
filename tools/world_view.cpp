@@ -16,9 +16,9 @@
 // load-or-generate under a per-frame admission budget, mesh neighbor-aware
 // on the job system, and evict behind you; the world is now unbounded in
 // x/z. On every changed pump the scene re-uploads wholesale (the measured
-// v1 cost printed in the summary; incremental device-local pools are the
-// named refinement) and the walk-mode solidity world rebuilds over the
-// current residents.
+// v1 cost printed in the summary; issue #25 tracks the incremental
+// device-local pools that replace it) and the walk-mode solidity world
+// rebuilds over the current residents.
 //
 // Windows-only dev tool (the offscreen renderer is the CI-validated path;
 // this is the human-facing one). Controls: WASD move, arrow keys look,

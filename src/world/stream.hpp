@@ -24,7 +24,9 @@
 //     itself on the job system (store thread-safety permitting) is the
 //     named refinement.
 //   - Meshes are stored render-ready (slots remapped to global content ids
-//     via remapSlotsToContent), so the renderer consumes residents as-is.
+//     via remapSlotsToContent), so the renderer consumes residents as-is;
+//     consumers re-upload the scene wholesale on change (issue #25 tracks
+//     the incremental device-local pools that replace that).
 
 #pragma once
 
